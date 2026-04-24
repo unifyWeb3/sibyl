@@ -1,159 +1,155 @@
 /**
- * Sibyl — Day 1 Milestone 4: First agent-to-agent x402 Payment
+ * Sibyl — Milestone 4: First Agent-to-Agent Payment
  *
- * This is the big one. Runs a complete economic round-trip:
+ * What this proves:
+ *   • x402 Payment Required protocol — Analyst advertises a price, Trader
+ *     parses it and executes accordingly (not just scripted token transfer)
+ *   • Kite AA userOp — Trader submits a real ERC-4337 userOp through Kite's
+ *     bundler; the on-chain tx is verifiable by anyone on KiteScan
+ *   • On-chain payment verification — Analyst reads the Kite L1 tx receipt
+ *     and checks the Transfer event before releasing the signal; zero trust
+ *   • Agent autonomy — zero human interaction after the script starts
  *
- *   1. Start Analyst's x402 server on localhost:8099
- *   2. Trader hits Analyst without payment → receives 402 Payment Required
- *   3. Trader builds EIP-712 TransferWithAuthorization, signs it with EOA
- *   4. Trader resends with X-Payment header
- *   5. Analyst verifies, calls Pieverse facilitator /v2/settle
- *   6. Facilitator executes on-chain USDT transfer (Trader AA → Analyst AA)
- *   7. Analyst returns the signal payload
- *   8. Trader logs the signal
- *   9. Server shuts down
- *
- * If we see a signal come back with a valid settledTxHash, M4 is cleared.
- *
- * Run with: pnpm day1:x402
+ * Run: pnpm day1:x402
  */
 
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 
 import chalk from 'chalk';
-import { formatUnits, Contract, JsonRpcProvider } from 'ethers';
-import { getKiteContext, KITE_NETWORK } from '../services/kite/client.ts';
-import { AGENT_ROLES } from '../services/kite/identities.ts';
-import { getAgent } from '../services/kite/registry.ts';
-import { startAnalystServer, stopAnalystServer, ANALYST_URL, PRICE_USDT } from '../services/analyst/server.ts';
-import { buySignal } from '../services/trader/buyer.ts';
-import { KITE_ADDRESSES } from '../services/kite/kitepass.ts';
+import { startAnalystServer } from '../services/analyst/server.js';
+import { buySignal } from '../services/trader/buyer.js';
+import { getAgent } from '../services/kite/registry.js';
+import { AGENT_ROLES } from '../services/kite/identities.js';
+import type { TradingSignal } from '../services/analyst/signal.js';
 
-const EXPLORER = process.env.KITE_EXPLORER || 'https://testnet.kitescan.ai';
+const ANALYST_URL = 'http://localhost:8099';
+const PAIR = 'BTCUSD';
 
-const ERC20_READ_ABI = [
-  'function balanceOf(address) view returns (uint256)',
-];
+// ─── Formatting helpers ───────────────────────────────────────────────────────
 
-async function usdtBalance(address: string): Promise<string> {
-  const provider = new JsonRpcProvider(process.env.KITE_RPC_URL!);
-  const usdt = new Contract(KITE_ADDRESSES.SETTLEMENT_TOKEN, ERC20_READ_ABI, provider);
-  const raw = await usdt.balanceOf(address);
-  return formatUnits(raw, 18);
+function renderSignal(s: TradingSignal): void {
+  const actionColor =
+    s.action === 'BUY'
+      ? chalk.bold.green
+      : s.action === 'SELL'
+        ? chalk.bold.red
+        : chalk.bold.yellow;
+
+  console.log('');
+  console.log(chalk.bold('  ┌─ Signal received ─────────────────────────────────────'));
+  console.log(`  │  pair       ${chalk.bold(s.pair)}`);
+  console.log(`  │  action     ${actionColor(s.action)}`);
+  console.log(`  │  confidence ${chalk.bold(s.confidence + '%')}`);
+  console.log(`  │  entry      $${s.entryPrice.toLocaleString()}`);
+  console.log(`  │  target     $${s.targetPrice.toLocaleString()}`);
+  console.log(`  │  stop       $${s.stopLoss.toLocaleString()}`);
+  console.log(`  │  horizon    ${s.timeHorizon}`);
+  console.log(`  │  regime     ${s.regime}`);
+  console.log(`  │  rationale  ${s.rationale}`);
+  console.log(`  │  generated  ${s.generatedAt}`);
+  console.log('  └───────────────────────────────────────────────────────');
+  console.log('');
 }
 
-async function main() {
-  console.log(chalk.bold.cyan('\n━━━ Sibyl — Milestone 4: First Agent-to-Agent Payment ━━━\n'));
+function renderTimings(t: { payment_ms: number; signal_ms: number; total_ms: number }): void {
+  console.log(
+    chalk.dim(
+      `  ⏱  payment: ${t.payment_ms}ms  |  signal delivery: ${t.signal_ms}ms  |  total: ${t.total_ms}ms`
+    )
+  );
+}
 
-  // Load agent records from registry
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log(chalk.bold('\n━━━ Sibyl — Milestone 4: First Agent-to-Agent Payment ━━━\n'));
+
+  // Load agent registry — use aaAddress (not .address)
   const analyst = getAgent(AGENT_ROLES.ANALYST);
   const trader = getAgent(AGENT_ROLES.TRADER);
-  if (!analyst) throw new Error('Analyst not registered. Run Milestone 2.');
-  if (!trader) throw new Error('Trader not registered. Run Milestone 2.');
-  if (!trader.fundedTxHash) {
-    throw new Error('Trader AA wallet not funded with USDT. Run Milestone 3.');
+
+  if (!analyst || !trader) {
+    console.error(chalk.red('✗ Agent registry missing. Run pnpm day1:passport first.'));
+    process.exit(1);
   }
 
-  console.log(chalk.gray(`Analyst AA:  ${analyst.aaAddress}`));
-  console.log(chalk.gray(`Trader AA:   ${trader.aaAddress}`));
-  console.log(chalk.gray(`Kite chain:  ${KITE_NETWORK.chainId}`));
-  console.log(chalk.gray(`Facilitator: ${process.env.KITE_FACILITATOR_URL}`));
+  const rpcUrl = process.env.KITE_RPC_URL!;
+  const bundlerUrl = process.env.KITE_BUNDLER_URL!;
+  const usdtAddress = process.env.KITE_USDT_ADDRESS!;
+  const privateKey = process.env.HACKATHON_PRIVATE_KEY!;
 
-  // Step 0 — balance check (the "before" snapshot)
-  console.log(chalk.bold('\n▸ Balances before:'));
-  const balAnalystBefore = await usdtBalance(analyst.aaAddress);
-  const balTraderBefore = await usdtBalance(trader.aaAddress);
-  console.log(chalk.gray(`  Analyst: ${balAnalystBefore} USDT`));
-  console.log(chalk.gray(`  Trader:  ${balTraderBefore} USDT`));
+  console.log(`  Analyst AA:   ${chalk.cyan(analyst.aaAddress)}`);
+  console.log(`  Trader AA:    ${chalk.cyan(trader.aaAddress)}`);
+  console.log(`  Kite chain:   2368`);
+  console.log(`  Pair:         ${PAIR}`);
+  console.log('');
 
-  // Step 1 — start Analyst x402 server
-  console.log(chalk.bold('\n▸ Starting Analyst x402 server...'));
-  const server = await startAnalystServer(analyst);
+  // Start Analyst server
+  console.log(chalk.bold('▸ Starting Analyst x402 server...'));
+  const stopServer = await startAnalystServer({
+    analystAddress: analyst.aaAddress,
+    usdtAddress,
+    rpcUrl,
+  });
+
+  // Give the server a moment to fully bind
+  await new Promise((r) => setTimeout(r, 300));
+
+  let exitCode = 0;
 
   try {
-    // Step 2–7 — run the buy flow
-    console.log(chalk.bold(`\n▸ Trader buying signal from Analyst for ${PRICE_USDT} USDT...\n`));
+    console.log('');
+    console.log(chalk.bold(`▸ Trader buying signal for ${PAIR}...`));
+    console.log('');
 
-    const ctx = await getKiteContext();
-    const result = await buySignal({
-      serviceUrl: ANALYST_URL,
-      endpoint: '/api/signal?pair=BTC/USDT',
-      trader,
-      signerWallet: ctx.signer,
-      chainId: BigInt(KITE_NETWORK.chainId),
+    const result = await buySignal(ANALYST_URL, PAIR, {
+      traderAAAddress: trader.aaAddress,
+      analystAAAddress: analyst.aaAddress,
+      usdtAddress,
+      rpcUrl,
+      bundlerUrl,
+      signerPrivateKey: privateKey,
     });
 
-    if (!result.success) {
-      console.log(chalk.red(`\n✗ buy flow failed: ${result.error}`));
-      throw new Error(result.error || 'buy failed');
-    }
+    renderSignal(result.signal);
 
-    // Step 8 — display results
-    console.log(chalk.bold.green('\n✓ Signal received!\n'));
-    console.log(chalk.bold('  Signal:'));
-    console.log(chalk.gray(`    id:         ${result.signal.id}`));
-    console.log(chalk.gray(`    pair:       ${result.signal.pair}`));
-    const actionColor =
-      result.signal.action === 'BUY'
-        ? chalk.green
-        : result.signal.action === 'SELL'
-          ? chalk.red
-          : chalk.yellow;
-    console.log(`    action:     ${actionColor.bold(result.signal.action)}`);
-    console.log(chalk.gray(`    confidence: ${result.signal.confidence}`));
-    console.log(chalk.gray(`    target:     $${result.signal.targetPrice}`));
-    console.log(chalk.gray(`    stop:       $${result.signal.stopLoss}`));
-    console.log(chalk.gray(`    regime:     ${result.signal.regime}`));
-    console.log(chalk.gray(`    rationale:  ${result.signal.rationale}`));
-
-    console.log(chalk.bold('\n  Payment:'));
-    console.log(chalk.gray(`    amount:     ${result.paidAmount} USDT`));
-    if (result.settledTxHash) {
-      console.log(chalk.green(`    settled:    ${result.settledTxHash}`));
-      console.log(chalk.gray(`    explorer:   ${EXPLORER}/tx/${result.settledTxHash}`));
-    } else {
-      console.log(chalk.yellow(`    settled:    (tx hash not returned by facilitator)`));
-    }
-
-    console.log(chalk.bold('\n  Timings:'));
-    console.log(chalk.gray(`    402 fetch:     ${result.timings?.request402Ms}ms`));
-    console.log(chalk.gray(`    sign auth:     ${result.timings?.signMs}ms`));
-    console.log(chalk.gray(`    paid fetch:    ${result.timings?.requestPaidMs}ms`));
-    console.log(chalk.gray(`    total:         ${result.timings?.totalMs}ms`));
-
-    // Step 9 — balance check (the "after" snapshot)
-    //  Wait 3s for settlement to propagate to RPC
-    await new Promise((r) => setTimeout(r, 3000));
-    console.log(chalk.bold('\n▸ Balances after:'));
-    const balAnalystAfter = await usdtBalance(analyst.aaAddress);
-    const balTraderAfter = await usdtBalance(trader.aaAddress);
-    const analystDelta = Number(balAnalystAfter) - Number(balAnalystBefore);
-    const traderDelta = Number(balTraderAfter) - Number(balTraderBefore);
+    console.log(chalk.bold('▸ Payment settled on Kite L1'));
+    console.log(`  tx hash:  ${chalk.cyan(result.paymentTxHash)}`);
     console.log(
-      `  Analyst: ${balAnalystBefore} → ${balAnalystAfter} USDT  ${chalk.green(`(+${analystDelta.toFixed(3)})`)}`
+      `  kitescan: ${chalk.underline.blue('https://testnet.kitescan.ai/tx/' + result.paymentTxHash)}`
     );
-    console.log(
-      `  Trader:  ${balTraderBefore} → ${balTraderAfter} USDT  ${chalk.red(`(${traderDelta.toFixed(3)})`)}`
-    );
+    console.log('');
 
-    if (Math.abs(analystDelta - Number(PRICE_USDT)) < 0.0001) {
-      console.log(chalk.bold.green('\n━━━ Milestone 4 complete ━━━'));
-      console.log(chalk.gray('\nOn-chain reality matches the protocol. First agent-to-agent payment shipped.'));
-      console.log(chalk.gray('Next: pnpm day1:attest (Milestone 5 — post reputation attestation)\n'));
-    } else {
-      console.log(chalk.bold.yellow('\n⚠  Milestone 4 partial'));
-      console.log(chalk.yellow('Payment flow completed but balance delta does not match expected.'));
-      console.log(chalk.yellow('Settlement may still be propagating. Check KiteScan tx manually.\n'));
+    console.log(chalk.bold('▸ Balance deltas (USDT)'));
+    console.log(`  Trader   ${result.traderBalanceBefore}  →  ${result.traderBalanceAfter}`);
+    console.log(`  Analyst  ${result.analystBalanceBefore}  →  ${result.analystBalanceAfter}`);
+    console.log('');
+
+    renderTimings(result.timings);
+
+    console.log('');
+    console.log(chalk.bold.green('✓ Milestone 4 complete'));
+    console.log(chalk.dim('  First autonomous agent-to-agent payment, settled on Kite L1.'));
+    console.log(chalk.dim('  Next: pnpm day1:attest — Milestone 5: Attestation'));
+  } catch (err: any) {
+    console.log('');
+    console.log(chalk.bold.red('✗ Fatal error:'), err.message || err);
+    console.log('');
+    if (err.stack) {
+      console.log(chalk.dim('  Stack:'), err.stack.split('\n').slice(0, 5).join('\n  '));
     }
-  } finally {
-    // Always tear down the server
-    console.log(chalk.gray('\n▸ stopping Analyst server...'));
-    await stopAnalystServer(server);
+    exitCode = 1;
   }
+
+  console.log('');
+  console.log(chalk.dim('▸ Stopping Analyst server...'));
+  await stopServer();
+
+  process.exit(exitCode);
 }
 
 main().catch((err) => {
-  console.error(chalk.red('\n✗ Fatal error:'), err);
+  console.error(chalk.red('\n✗ Top-level crash:'), err);
   process.exit(1);
 });

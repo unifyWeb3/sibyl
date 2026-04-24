@@ -1,82 +1,77 @@
 /**
- * services/analyst/signal.ts
+ * Sibyl — Analyst Signal Generator
  *
- * Generates structured trading signals. For Day 1 M4, we use a deterministic
- * pseudo-random generator seeded by timestamp so the demo is reproducible but
- * visually varied. Day 2 upgrades this to Claude-powered reasoning over real
- * Pyth prices + funding rates + sentiment.
+ * For M4: generates deterministic stub signals with realistic structure.
+ * Day 2: this gets replaced with Claude + Pyth price feed reasoning.
  */
 
-export interface Signal {
+export type MarketRegime = 'trending_up' | 'trending_down' | 'ranging' | 'volatile';
+export type SignalAction = 'BUY' | 'SELL' | 'HOLD';
+
+export interface TradingSignal {
   id: string;
-  timestamp: number;
   pair: string;
-  action: 'BUY' | 'SELL' | 'HOLD';
-  confidence: number; // 0..1
+  action: SignalAction;
+  confidence: number;          // 0-100
+  entryPrice: number;
   targetPrice: number;
   stopLoss: number;
+  timeHorizon: string;         // e.g. "4h", "1d"
+  regime: MarketRegime;
   rationale: string;
-  regime: 'trending' | 'mean_reverting' | 'choppy';
-  holdMinutes: number;
+  generatedAt: string;         // ISO timestamp
+  analystId: string;           // AA wallet address
 }
 
-const PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'] as const;
-const REGIMES: Signal['regime'][] = ['trending', 'mean_reverting', 'choppy'];
-
-// Stubbed price anchors so the signal "looks real" in the demo
-const PRICE_ANCHORS: Record<string, number> = {
-  'BTC/USDT': 67000,
-  'ETH/USDT': 3400,
-  'SOL/USDT': 165,
+const STUB_SIGNALS: Record<string, Omit<TradingSignal, 'id' | 'generatedAt' | 'analystId'>> = {
+  'BTCUSD': {
+    pair: 'BTCUSD',
+    action: 'BUY',
+    confidence: 74,
+    entryPrice: 93_500,
+    targetPrice: 97_800,
+    stopLoss: 91_200,
+    timeHorizon: '4h',
+    regime: 'trending_up',
+    rationale:
+      'Funding rates normalized after three-day compression. Open interest recovering with spot flows positive. Structure supports continuation toward the 97.8k liquidity cluster.',
+  },
+  'ETHUSD': {
+    pair: 'ETHUSD',
+    action: 'HOLD',
+    confidence: 58,
+    entryPrice: 3_240,
+    targetPrice: 3_410,
+    stopLoss: 3_110,
+    timeHorizon: '1d',
+    regime: 'ranging',
+    rationale:
+      'Price consolidating in the 3,100–3,350 band for four sessions. Insufficient directional bias. Await a decisive close above 3,350 before adding exposure.',
+  },
 };
 
-const RATIONALES = {
-  BUY: [
-    'funding rate flipped positive on perps; OI expanding with spot bid absorption',
-    'breakout above 4h resistance with volume confirmation; regime favors momentum',
-    'whale accumulation cluster detected in last 30m; orderbook asymmetric',
-  ],
-  SELL: [
-    'spot-perp basis widening; short-term top likely on diminishing volume',
-    'rejection at weekly level + RSI divergence; reversion to mean probable',
-    'liquidation cluster above; cascade risk if stops trigger',
-  ],
-  HOLD: [
-    'regime indeterminate; chop risk elevated; wait for clean resolution',
-    'funding neutral + low volatility; no edge until either side commits',
-  ],
-};
-
-export function generateSignal(pair?: string): Signal {
-  const selectedPair = pair || PAIRS[Math.floor(Math.random() * PAIRS.length)];
-  const anchor = PRICE_ANCHORS[selectedPair] || 1000;
-
-  const rand = Math.random();
-  const action: Signal['action'] = rand < 0.4 ? 'BUY' : rand < 0.7 ? 'SELL' : 'HOLD';
-  const regime = REGIMES[Math.floor(Math.random() * REGIMES.length)];
-
-  // Vary confidence based on regime (trending = higher confidence, choppy = lower)
-  const baseConfidence = regime === 'trending' ? 0.75 : regime === 'mean_reverting' ? 0.65 : 0.45;
-  const confidence = Math.min(0.95, Math.max(0.35, baseConfidence + (Math.random() - 0.5) * 0.2));
-
-  // Target is 1-3% in direction of action
-  const moveBps = action === 'HOLD' ? 0 : (Math.random() * 200 + 100) * (action === 'BUY' ? 1 : -1);
-  const targetPrice = anchor * (1 + moveBps / 10000);
-  const stopLoss = anchor * (1 - (moveBps / 10000) * 0.4); // 40% of target move as stop
-
-  const rationales = RATIONALES[action];
-  const rationale = rationales[Math.floor(Math.random() * rationales.length)];
+/**
+ * Generate a trading signal for the given pair.
+ * Falls back to a generic HOLD if the pair isn't in the stub set.
+ */
+export function generateSignal(pair: string, analystId: string): TradingSignal {
+  const normalized = pair.toUpperCase().replace(/[-_\/]/, '');
+  const stub = STUB_SIGNALS[normalized] ?? {
+    pair: normalized,
+    action: 'HOLD' as SignalAction,
+    confidence: 50,
+    entryPrice: 0,
+    targetPrice: 0,
+    stopLoss: 0,
+    timeHorizon: '1d',
+    regime: 'ranging' as MarketRegime,
+    rationale: 'Insufficient data for high-conviction call. Standing aside.',
+  };
 
   return {
-    id: `sig_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    timestamp: Math.floor(Date.now() / 1000),
-    pair: selectedPair,
-    action,
-    confidence: Math.round(confidence * 100) / 100,
-    targetPrice: Math.round(targetPrice * 100) / 100,
-    stopLoss: Math.round(stopLoss * 100) / 100,
-    rationale,
-    regime,
-    holdMinutes: Math.floor(Math.random() * 60) + 15,
+    ...stub,
+    id: `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    generatedAt: new Date().toISOString(),
+    analystId,
   };
 }

@@ -12,6 +12,10 @@
 
 ---
 
+M4 pivot (end of Day 1): Discovered Pieverse facilitator upgraded to x402 v2 (expects scheme: exact, network: eip155:2368, x402Version: 2), but Kite's SDK reference and docs still describe v1 (gokite-aa, kite-testnet). Facilitator path blocked deeper by Test USDT (0x0fF5...) not implementing ERC-3009 - only exposes plain ERC-20 methods. Resolution: pivoting M4 to AA-direct payment via Trader's KitePass vault. Trader signs a userOp through Kite's bundler that calls usdt.transfer from the KitePass. This exercises our M3 spending rules on-chain (every signal purchase naturally hits the $2 per-tx cap check). Stronger narrative, no facilitator dependency, pure Kite stack.
+
+---
+
 ## Notes as we go
 
 ### Setup

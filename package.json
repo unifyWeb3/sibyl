@@ -9,20 +9,23 @@
     "day1:passport": "tsx scripts/01_register_passports.ts",
     "day1:session": "tsx scripts/02_create_session.ts",
     "day1:x402": "tsx scripts/03_x402_roundtrip.ts",
-    "day1:attest": "tsx scripts/04_post_attestation.ts"
+    "day1:attest": "tsx scripts/04_post_attestation.ts",
+    "probe:sdk": "tsx scripts/00b_probe_sdk.ts"
   },
   "dependencies": {
-    "gokite-aa-sdk": "latest",
-    "ethers": "^6.13.0",
-    "viem": "^2.21.0",
+    "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^5.2.1",
+    "gokite-aa-sdk": "latest",
     "ofetch": "^1.4.0",
-    "chalk": "^5.3.0"
+    "viem": "^2.21.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.6.0"
   },
   "packageManager": "pnpm@9.0.0"
 }
