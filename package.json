@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "gokite-aa-sdk": "latest",
     "ofetch": "^1.4.0",
+    "solc": "0.8.24",
     "viem": "^2.21.0"
   },
   "devDependencies": {

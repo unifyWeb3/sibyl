@@ -1,26 +1,33 @@
 /**
  * Sibyl — Trader Payment Module
  *
- * Executes on-chain USDT transfers through the Trader's ERC-4337 AA wallet.
- * Uses the M2-proven SDK pattern: sendUserOperationAndWait(signer, request, signFn, salt).
+ * Executes on-chain USDT transfers through the Trader's ERC-4337 AA wallet
+ * using Kite's proven sendUserOperationAndWait pattern. Pays gas in native
+ * KITE (Trader AA must have a small KITE balance — we fund it once).
  *
- * Flow:
- *   EOA signs a userOp → Kite bundler submits → AA wallet executes usdt.transfer
- *   → Analyst receives USDT → Analyst reads tx receipt to verify
- *
- * No facilitator, no off-chain signing, no trust assumptions. Pure Kite L1.
+ * This is the same code that successfully moved 0.005 USDT twice on Apr 24.
+ * We tried switching to sendUserOperationWithPayment (paymaster + USDT gas)
+ * to be stablecoin-native, but that SDK path has a batch-encoding bug on
+ * Kite's staging testnet. We'll revisit for Day 2.
  */
 
 import { GokiteAASDK } from 'gokite-aa-sdk';
-import { JsonRpcProvider, Wallet, Contract, Interface, getBytes, parseUnits, formatUnits } from 'ethers';
+import {
+  JsonRpcProvider,
+  Wallet,
+  Contract,
+  Interface,
+  getBytes,
+  parseUnits,
+  formatUnits,
+} from 'ethers';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const SIGNAL_PRICE_USDT = '0.005';
 const SIGNAL_PRICE_WEI = parseUnits(SIGNAL_PRICE_USDT, 18);
 
-// Must match M2's registered salt for the Trader.
-// See services/kite/identities.ts — trader salt = 1002n.
+// Must match M2's registered salt for the Trader (services/kite/identities.ts)
 const TRADER_SALT = 1002n;
 
 const ERC20_ABI = [
@@ -89,7 +96,7 @@ export async function payForSignal(config: TraderConfig): Promise<{
   const signerAddress = await signer.getAddress();
   const sdk = new GokiteAASDK('kite_testnet', rpcUrl, bundlerUrl);
 
-  // Snapshot balances BEFORE
+  // Balances BEFORE
   const traderBalanceBefore = await getUSDTBalance(provider, traderAAAddress, usdtAddress);
   const analystBalanceBefore = await getUSDTBalance(provider, analystAAAddress, usdtAddress);
 
@@ -106,16 +113,14 @@ export async function payForSignal(config: TraderConfig): Promise<{
 
   console.log(`  [trader]   building userOp: transfer ${SIGNAL_PRICE_USDT} USDT → Analyst`);
 
-  // Sign function — same as M2, signs the userOp hash
   const signFunction = async (userOpHash: string): Promise<string> => {
     return signer.signMessage(getBytes(userOpHash));
   };
 
-  // Submit userOp via the M2-proven pattern
   const request = {
-    target: usdtAddress,      // USDT contract
-    value: 0n,                 // no ETH value
-    callData: transferData,   // the transfer() call
+    target: usdtAddress,
+    value: 0n,
+    callData: transferData,
   };
 
   console.log(`  [trader]   submitting userOp (this may take 15-25s)...`);
@@ -127,16 +132,12 @@ export async function payForSignal(config: TraderConfig): Promise<{
     TRADER_SALT
   );
 
-  // Validate result shape
   if (!result.status || result.status.status !== 'success') {
-    const reason = result.status?.reason || 'unknown';
-    throw new Error(`userOp failed: ${reason}`);
+    throw new Error(`userOp failed: ${result.status?.reason || 'unknown'}`);
   }
 
   const txHash = result.status.transactionHash;
-  if (!txHash) {
-    throw new Error('userOp succeeded but no transactionHash returned');
-  }
+  if (!txHash) throw new Error('userOp succeeded but no transactionHash returned');
 
   console.log(`  [trader]   ✓ tx confirmed: ${txHash}`);
   console.log(`  [trader]   → KiteScan: https://testnet.kitescan.ai/tx/${txHash}`);
@@ -151,7 +152,7 @@ export async function payForSignal(config: TraderConfig): Promise<{
     paidAt: new Date().toISOString(),
   };
 
-  // Snapshot balances AFTER
+  // Balances AFTER
   const traderBalanceAfter = await getUSDTBalance(provider, traderAAAddress, usdtAddress);
   const analystBalanceAfter = await getUSDTBalance(provider, analystAAAddress, usdtAddress);
 
