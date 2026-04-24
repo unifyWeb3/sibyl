@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper: #FAFAF7;
+    --ink: #0A0A0B;
+    --signal: #00D084;
+    --manila: #EFE7D4;
+  }
+
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-feature-settings: 'ss01', 'ss02', 'cv01', 'cv11';
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: relative;
+  }
+
+  /* Global grain — 3% multiply */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.03;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: rgba(0, 208, 132, 0.25);
+    color: var(--ink);
+  }
+}
+
+@layer utilities {
+  .label-caps {
+    font-family: var(--font-jetbrains-mono), monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6B6B70;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Schema grid — faint vertical 12-col lines */
+  .schema-grid {
+    background-image: linear-gradient(
+      90deg,
+      rgba(10, 10, 11, 0.025) 1px,
+      transparent 1px
+    );
+    background-size: calc(100% / 12) 100%;
+  }
+
+  /* Hero halo */
+  .hero-halo {
+    position: absolute;
+    width: 60vw;
+    height: 60vw;
+    max-width: 900px;
+    max-height: 900px;
+    left: -10%;
+    top: 30%;
+    background: radial-gradient(
+      circle,
+      rgba(0, 208, 132, 0.08) 0%,
+      rgba(0, 208, 132, 0.04) 30%,
+      transparent 60%
+    );
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Paper card */
+  .card-paper {
+    background: #FFFFFF;
+    border: 1px solid #ECECE8;
+    box-shadow:
+      0 1px 0 0 rgba(10, 10, 11, 0.02) inset,
+      0 1px 2px rgba(10, 10, 11, 0.04),
+      0 8px 24px -8px rgba(10, 10, 11, 0.08);
+    transition: box-shadow 300ms ease, border-color 300ms ease;
+  }
+  .card-paper:hover {
+    border-color: #D4D4D0;
+    box-shadow:
+      0 1px 0 0 rgba(10, 10, 11, 0.03) inset,
+      0 2px 4px rgba(10, 10, 11, 0.06),
+      0 16px 40px -12px rgba(10, 10, 11, 0.14);
+  }
+
+  /* Ledger band — manila/kraft texture */
+  .ledger-surface {
+    background-color: #EFE7D4;
+    background-image:
+      /* fine horizontal ledger rules every 28px */
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 27px,
+        rgba(120, 90, 30, 0.06) 27px,
+        rgba(120, 90, 30, 0.06) 28px
+      ),
+      /* warm paper grain */
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0 0.15  0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-blend-mode: multiply;
+  }
+
+  /* Ledger table row zebra striping */
+  .ledger-row-even {
+    background-color: #F5EED9;
+  }
+  .ledger-row-odd {
+    background-color: #EFE7D4;
+  }
+
+  /* The "just landed" attestation pulse */
+  .ledger-row-new {
+    animation: pulseRow 2s ease-out;
+  }
+
+  /* Small ticker dot — used in "live" indicators */
+  .ticker-dots span {
+    display: inline-block;
+    width: 3px;
+    height: 3px;
+    margin: 0 1px;
+    border-radius: 50%;
+    background: #00A368;
+  }
+  .ticker-dots span:nth-child(1) { animation: ticker 1.4s ease-in-out 0s infinite; }
+  .ticker-dots span:nth-child(2) { animation: ticker 1.4s ease-in-out 0.2s infinite; }
+  .ticker-dots span:nth-child(3) { animation: ticker 1.4s ease-in-out 0.4s infinite; }
+
+  .anim-stagger {
+    animation: fadeInUp 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
