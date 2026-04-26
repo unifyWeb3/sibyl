@@ -17,18 +17,16 @@ export const publicClient = createPublicClient({
   transport: http(),
 });
 
+// ─── Sibyl on-chain contracts ────────────────────────────────────────────────
+
 export const SIBYL_CONTRACTS = {
   attestations: '0xda942e2deB5E75f662234b0D30b96eBE3A9805D6' as Address,
+  analysts:     '0xF2438BF71bcE90265580c1C74aA0D685562F93e0' as Address,
 } as const;
 
+// ─── Static agent metadata (operational roles, not analysts) ─────────────────
+
 export const SIBYL_AGENTS = {
-  analyst: {
-    name: 'Analyst',
-    aaAddress: '0x55Db3fbe402F8FB7a8B159A2d145fFba7CAd3Bd7' as Address,
-    role: 'Sells trading signals via x402',
-    tagline: 'Reads the market, charges for the call.',
-    salt: 1001,
-  },
   trader: {
     name: 'Trader',
     aaAddress: '0x425D2e74AB743F39E3d47418e866e1d20DB8b83A' as Address,
@@ -40,7 +38,7 @@ export const SIBYL_AGENTS = {
   guardian: {
     name: 'Guardian',
     aaAddress: '0x22CE0e27256775232a421BB32df6495762025606' as Address,
-    role: 'Hedges risk on the trader\u2019s positions',
+    role: "Hedges risk on the trader's positions",
     tagline: 'Holds the hedge. Enforces the cap.',
     salt: 1003,
     kitepass: '0x67a0C4f8a0DEa3Ea186Af93C2977bAD00e3aD826' as Address,
@@ -54,6 +52,8 @@ export const KNOWN_TXS = {
 
 export const USDT_ADDRESS = '0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63' as Address;
 export const EXPLORER = 'https://testnet.kitescan.ai';
+
+// ─── ABIs ────────────────────────────────────────────────────────────────────
 
 export const SIBYL_ATTESTATIONS_ABI = [
   {
@@ -105,11 +105,189 @@ export const SIBYL_ATTESTATIONS_ABI = [
   },
 ] as const;
 
+export const SIBYL_ANALYSTS_ABI = [
+  {
+    type: 'function',
+    name: 'totalAnalysts',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'allAnalysts',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address[]' }],
+  },
+  {
+    type: 'function',
+    name: 'getAnalyst',
+    stateMutability: 'view',
+    inputs: [{ name: 'aa', type: 'address' }],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'aa', type: 'address' },
+          { name: 'name', type: 'string' },
+          { name: 'strategy', type: 'uint8' },
+          { name: 'creator', type: 'address' },
+          { name: 'createdAt', type: 'uint64' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'analystsPaged',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    outputs: [
+      {
+        type: 'tuple[]',
+        components: [
+          { name: 'aa', type: 'address' },
+          { name: 'name', type: 'string' },
+          { name: 'strategy', type: 'uint8' },
+          { name: 'creator', type: 'address' },
+          { name: 'createdAt', type: 'uint64' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'AnalystRegistered',
+    inputs: [
+      { name: 'aa', type: 'address', indexed: true },
+      { name: 'name', type: 'string', indexed: false },
+      { name: 'strategy', type: 'uint8', indexed: false },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'createdAt', type: 'uint64', indexed: false },
+    ],
+  },
+] as const;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export type Outcome = 'Pending' | 'Win' | 'Loss' | 'Neutral';
+export type Strategy = 'Bear' | 'Chaser' | 'Reverter' | 'Custom';
 
 export function outcomeLabel(v: number): Outcome {
   return (['Pending', 'Win', 'Loss', 'Neutral'] as const)[v] ?? 'Pending';
 }
+
+export function strategyLabel(v: number): Strategy {
+  return (['Bear', 'Chaser', 'Reverter', 'Custom'] as const)[v] ?? 'Custom';
+}
+
+export interface AnalystEntry {
+  rank: number;
+  aa: Address;
+  name: string;
+  strategy: Strategy;
+  creator: Address;
+  createdAt: number;
+  // Attestation stats (joined)
+  total: number;
+  wins: number;
+  losses: number;
+  neutrals: number;
+  hitRate: number;
+  cumulativeBps: number;
+  hasHistory: boolean;
+}
+
+// ─── Loaders ─────────────────────────────────────────────────────────────────
+
+/**
+ * Load all analysts from SibylAnalysts, join each with their attestation summary,
+ * and return ranked by cumulativeBps desc (then total desc as tiebreaker).
+ */
+export async function loadLeaderboard(): Promise<AnalystEntry[]> {
+  try {
+    // Page through registry — 50 is plenty for the foreseeable future
+    const analysts = (await publicClient.readContract({
+      address: SIBYL_CONTRACTS.analysts,
+      abi: SIBYL_ANALYSTS_ABI,
+      functionName: 'analystsPaged',
+      args: [0n, 50n],
+    })) as readonly {
+      aa: Address;
+      name: string;
+      strategy: number;
+      creator: Address;
+      createdAt: bigint;
+    }[];
+
+    const entries: AnalystEntry[] = [];
+
+    for (const a of analysts) {
+      let total = 0,
+        wins = 0,
+        losses = 0,
+        neutrals = 0,
+        cumulativeBps = 0;
+
+      try {
+        const [tot, w, l, n, cum] = (await publicClient.readContract({
+          address: SIBYL_CONTRACTS.attestations,
+          abi: SIBYL_ATTESTATIONS_ABI,
+          functionName: 'analystSummary',
+          args: [a.aa],
+        })) as [bigint, bigint, bigint, bigint, bigint];
+        total = Number(tot);
+        wins = Number(w);
+        losses = Number(l);
+        neutrals = Number(n);
+        cumulativeBps = Number(cum);
+      } catch (e) {
+        // Analyst exists in registry but has no attestations yet — fine
+      }
+
+      const scored = wins + losses + neutrals;
+      const hitRate = scored > 0 ? wins / scored : 0;
+
+      entries.push({
+        rank: 0, // assigned after sort
+        aa: a.aa,
+        name: a.name,
+        strategy: strategyLabel(a.strategy),
+        creator: a.creator,
+        createdAt: Number(a.createdAt),
+        total,
+        wins,
+        losses,
+        neutrals,
+        hitRate,
+        cumulativeBps,
+        hasHistory: total > 0,
+      });
+    }
+
+    // Sort: hasHistory ones first by cumulativeBps desc, then by total desc
+    entries.sort((a, b) => {
+      if (a.hasHistory !== b.hasHistory) return a.hasHistory ? -1 : 1;
+      if (a.cumulativeBps !== b.cumulativeBps) return b.cumulativeBps - a.cumulativeBps;
+      return b.total - a.total;
+    });
+
+    entries.forEach((e, i) => {
+      e.rank = i + 1;
+    });
+
+    return entries;
+  } catch (err) {
+    console.error('Failed to load leaderboard:', err);
+    return [];
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function truncateAddress(addr: string, len = 6): string {
   if (addr.length <= len * 2 + 2) return addr;

@@ -10,9 +10,11 @@ import {
   truncateAddress,
   formatBps,
   formatRelativeTime,
+  loadLeaderboard,
   type Outcome,
 } from '@/lib/kite';
 import { MissionControl } from '@/components/MissionControl';
+import { Leaderboard } from '@/components/Leaderboard';
 
 export const revalidate = 10;
 
@@ -124,40 +126,14 @@ function OutcomeDot({ outcome }: { outcome: Outcome }) {
   return <span className="inline-block w-2.5 h-2.5 rounded-full bg-ink-tertiary" />;
 }
 
-const AGENT_GLYPHS: Record<string, React.ReactNode> = {
-  Analyst: (
-    <svg viewBox="0 0 40 40" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.25">
-      <circle cx="20" cy="20" r="12" />
-      <circle cx="20" cy="20" r="4.5" fill="currentColor" />
-      <path d="M 6 20 Q 20 5, 34 20 Q 20 35, 6 20" />
-    </svg>
-  ),
-  Trader: (
-    <svg viewBox="0 0 40 40" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.25">
-      <circle cx="20" cy="20" r="15" />
-      <path d="M 20 6 L 20 34 M 6 20 L 34 20" />
-      <path d="M 20 6 L 24 12 L 16 12 Z" fill="currentColor" />
-    </svg>
-  ),
-  Guardian: (
-    <svg viewBox="0 0 40 40" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.25">
-      <path d="M 20 4 L 35 10 L 35 20 Q 35 30, 20 36 Q 5 30, 5 20 L 5 10 Z" />
-      <path d="M 14 20 L 19 25 L 27 15" />
-    </svg>
-  ),
-};
-
 export default async function HomePage() {
-  const analyst = await loadAnalystState(SIBYL_AGENTS.analyst.aaAddress);
-  const analystUsdt = await loadUsdtBalance(SIBYL_AGENTS.analyst.aaAddress);
+  // Use the leader (top of leaderboard) as the hero's "headline" analyst
+  const leaderboard = await loadLeaderboard();
+  const leader = leaderboard.find((e) => e.hasHistory) ?? leaderboard[0];
+
+  const analystState = leader ? await loadAnalystState(leader.aa) : null;
   const traderUsdt = await loadUsdtBalance(SIBYL_AGENTS.trader.aaAddress);
   const guardianUsdt = await loadUsdtBalance(SIBYL_AGENTS.guardian.aaAddress);
-
-  const agentUsdtMap: Record<string, number> = {
-    Analyst: analystUsdt,
-    Trader: traderUsdt,
-    Guardian: guardianUsdt,
-  };
 
   return (
     <main className="relative z-10">
@@ -170,7 +146,7 @@ export default async function HomePage() {
           style={{ animationDelay: '0ms' }}
         >
           <span>Sibyl · Proof of Alpha</span>
-          <span className="hidden md:inline">Kite L1 · Testnet · Block 21.0M</span>
+          <span className="hidden md:inline">Kite L1 · Testnet · {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}</span>
           <span className="md:hidden">Kite L1</span>
         </header>
 
@@ -206,10 +182,10 @@ export default async function HomePage() {
               style={{ animationDelay: '380ms' }}
             >
               <a
-                href="#reputation"
+                href="#leaderboard"
                 className="group inline-flex items-center gap-2 border border-rule hover:border-ink bg-paper-elevated px-5 py-2.5 rounded-sm shadow-card hover:shadow-card-hover transition-all"
               >
-                See the reputation live
+                See the leaderboard
                 <span className="text-signal group-hover:translate-x-0.5 transition-transform">
                   →
                 </span>
@@ -225,9 +201,9 @@ export default async function HomePage() {
 
           <div className="text-ink anim-stagger" style={{ animationDelay: '480ms' }}>
             <MissionControl
-              totalAttestations={analyst?.total ?? 0}
-              hitRate={analyst?.hitRate ?? 0}
-              cumulativeBps={analyst?.cumulativeBps ?? 0}
+              totalAttestations={analystState?.total ?? 0}
+              hitRate={analystState?.hitRate ?? 0}
+              cumulativeBps={analystState?.cumulativeBps ?? 0}
             />
           </div>
         </div>
@@ -244,28 +220,30 @@ export default async function HomePage() {
         </footer>
       </section>
 
-      {/* ─── Reputation cards ─── */}
-      <section id="reputation" className="border-t border-rule-subtle bg-paper-subtle">
-        <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
-          <div className="flex items-baseline justify-between mb-14">
-            <h2 className="font-display text-h2">
-              The reputation
-              <br />
-              is on-chain.
-            </h2>
-            <span className="label-caps">#001 · Analyst</span>
-          </div>
+      {/* ─── Leader's reputation cards ─── */}
+      {analystState && leader && (
+        <section id="reputation" className="border-t border-rule-subtle bg-paper-subtle">
+          <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
+            <div className="flex items-baseline justify-between mb-14">
+              <h2 className="font-display text-h2">
+                The reputation
+                <br />
+                is on-chain.
+              </h2>
+              <span className="label-caps">
+                #{String(leader.rank).padStart(3, '0')} · {leader.name}
+              </span>
+            </div>
 
-          {analyst ? (
             <div className="grid md:grid-cols-3 gap-5">
               <div className="card-paper p-8 md:p-10 rounded-sm">
                 <div className="label-caps mb-5">hit rate</div>
                 <div className="font-display text-display tabular text-ink">
-                  {(analyst.hitRate * 100).toFixed(1)}
+                  {(analystState.hitRate * 100).toFixed(1)}
                   <span className="text-ink-tertiary">%</span>
                 </div>
                 <div className="mt-4 text-sm text-ink-muted tabular font-mono">
-                  {analyst.wins}W · {analyst.losses}L · {analyst.neutrals}N
+                  {analystState.wins}W · {analystState.losses}L · {analystState.neutrals}N
                 </div>
               </div>
 
@@ -273,28 +251,28 @@ export default async function HomePage() {
                 <div className="label-caps mb-5">cumulative</div>
                 <div
                   className={`font-display text-display tabular ${
-                    analyst.cumulativeBps > 0
+                    analystState.cumulativeBps > 0
                       ? 'text-signal-deep'
-                      : analyst.cumulativeBps < 0
+                      : analystState.cumulativeBps < 0
                         ? 'text-warn-deep'
                         : 'text-ink'
                   }`}
                 >
-                  {analyst.cumulativeBps > 0 ? '+' : ''}
-                  {analyst.cumulativeBps}
+                  {analystState.cumulativeBps > 0 ? '+' : ''}
+                  {analystState.cumulativeBps}
                   <span className="text-ink-tertiary text-2xl md:text-3xl ml-2 font-sans not-italic">
                     bps
                   </span>
                 </div>
                 <div className="mt-4 text-sm text-ink-muted font-mono">
-                  across {analyst.total} attestations
+                  across {analystState.total} attestations
                 </div>
               </div>
 
               <div className="card-paper p-8 md:p-10 rounded-sm">
                 <div className="label-caps mb-5">history</div>
                 <div className="flex gap-3 items-center h-16">
-                  {analyst.attestations
+                  {analystState.attestations
                     .slice(0, 12)
                     .reverse()
                     .map((a) => (
@@ -312,30 +290,23 @@ export default async function HomePage() {
                     ))}
                 </div>
                 <div className="mt-4 text-sm text-ink-muted font-mono">
-                  last {analyst.attestations.length} outcomes
+                  last {analystState.attestations.length} outcomes
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="card-paper p-12 text-center text-ink-muted rounded-sm">
-              Loading reputation data from Kite L1…
-            </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
-      {/* ─── LEDGER BAND — manila/kraft cream with ruled texture ─── */}
-      {analyst && analyst.attestations.length > 0 && (
+      {/* ─── LEDGER BAND — manila/kraft ─── */}
+      {analystState && analystState.attestations.length > 0 && (
         <section className="relative ledger-surface border-y-2 border-manila-border overflow-hidden">
           <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28 relative z-10">
-            {/* Section header — editorial masthead style */}
             <div className="flex items-end justify-between mb-3 border-b border-ink pb-3">
               <div className="flex items-center gap-3">
                 <span className="label-caps !text-ink !font-semibold">the ledger</span>
                 <span className="ticker-dots flex items-center">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                  <span></span><span></span><span></span>
                 </span>
                 <span className="label-caps !text-signal-deep">live feed</span>
               </div>
@@ -358,14 +329,12 @@ export default async function HomePage() {
               <div className="hidden md:block text-right">
                 <div className="label-caps mb-1">attestations</div>
                 <div className="font-mono text-2xl tabular text-ink">
-                  {String(analyst.total).padStart(3, '0')}
+                  {String(analystState.total).padStart(3, '0')}
                 </div>
               </div>
             </div>
 
-            {/* Ledger table */}
             <div className="border border-manila-border rounded-sm overflow-hidden shadow-ledger">
-              {/* Column header */}
               <div className="grid grid-cols-12 gap-3 px-5 py-3.5 bg-manila-raised border-b-2 border-ink label-caps !text-ink">
                 <div className="col-span-1">#</div>
                 <div className="col-span-2">outcome</div>
@@ -375,8 +344,7 @@ export default async function HomePage() {
                 <div className="col-span-2 text-right">recorded</div>
               </div>
 
-              {/* Rows */}
-              {analyst.attestations.slice(0, 10).map((a, i) => (
+              {analystState.attestations.slice(0, 10).map((a, i) => (
                 <a
                   key={a.id}
                   href={`${EXPLORER}/address/${SIBYL_CONTRACTS.attestations}`}
@@ -387,7 +355,7 @@ export default async function HomePage() {
                   } hover:bg-manila-raised`}
                 >
                   <div className="col-span-1 font-mono text-xs text-ink-muted tabular">
-                    {String(analyst.attestations.length - i).padStart(3, '0')}
+                    {String(analystState.attestations.length - i).padStart(3, '0')}
                   </div>
                   <div className="col-span-2 flex items-center gap-3">
                     <OutcomeDot outcome={a.outcome} />
@@ -417,7 +385,6 @@ export default async function HomePage() {
               ))}
             </div>
 
-            {/* Ledger footer — editorial colophon */}
             <div className="mt-5 flex items-center justify-between label-caps">
               <span className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-signal-deep rounded-full animate-pulse-soft" />
@@ -429,116 +396,187 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* ─── Agent cards ─── */}
-      <section id="primitives" className="border-t border-rule-subtle bg-paper">
+      {/* ─── LEADERBOARD ─── */}
+      <section id="leaderboard" className="border-t border-rule-subtle bg-paper">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
-          <div className="flex items-baseline justify-between mb-14">
+          <div className="flex items-baseline justify-between mb-12">
+            <div>
+              <div className="label-caps mb-3">the marketplace</div>
+              <h2 className="font-display text-h2">
+                Analysts on Sibyl.
+              </h2>
+              <p className="mt-4 max-w-xl text-base text-ink-secondary leading-relaxed">
+                Anyone can deploy an analyst. The chain decides if they're any good.{' '}
+                <span className="text-ink">Reputation is permissionless.</span>
+              </p>
+            </div>
+            <a
+              href={`${EXPLORER}/address/${SIBYL_CONTRACTS.analysts}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden md:inline label-caps hover:text-ink transition-colors"
+            >
+              registry contract ↗
+            </a>
+          </div>
+
+          <Leaderboard entries={leaderboard} />
+        </div>
+      </section>
+
+      {/* ─── PRIMITIVES (operator agents + key contracts) ─── */}
+      <section id="primitives" className="border-t border-rule-subtle bg-paper-subtle">
+        <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
+          <div className="flex items-baseline justify-between mb-12">
             <h2 className="font-display text-h2">
-              Three agents.
-              <br />
-              One economy.
+              The infrastructure<br />beneath the marketplace.
             </h2>
             <span className="label-caps">Primitives</span>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5">
-            {Object.values(SIBYL_AGENTS).map((agent) => (
-              <div
-                key={agent.aaAddress}
-                className="card-paper p-8 md:p-10 rounded-sm group relative"
-              >
-                <div
-                  className="absolute top-0 left-0 right-0 h-[2px] bg-signal opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-hidden
-                />
-
-                <div className="flex items-center justify-between mb-8">
-                  <div className="text-ink group-hover:text-signal-deep transition-colors">
-                    {AGENT_GLYPHS[agent.name]}
+          {/* Operator agents — Trader + Guardian */}
+          <div className="mb-12">
+            <div className="label-caps mb-5">operators</div>
+            <div className="grid md:grid-cols-2 gap-5">
+              <div className="card-paper p-7 rounded-sm group">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="font-display italic text-2xl text-ink">
+                    {SIBYL_AGENTS.trader.tagline}
                   </div>
-                  <div className="label-caps">{agent.name}</div>
+                  <span className="label-caps">{SIBYL_AGENTS.trader.name}</span>
                 </div>
-
-                <div className="font-display italic text-2xl md:text-[1.7rem] leading-tight text-ink mb-3">
-                  {agent.tagline}
+                <div className="text-sm text-ink-muted mb-5 leading-relaxed">
+                  {SIBYL_AGENTS.trader.role}
                 </div>
-                <div className="text-sm text-ink-muted mb-10 leading-relaxed">
-                  {agent.role}
-                </div>
-
-                <div className="space-y-3 pt-6 border-t border-rule-subtle text-sm">
-                  <div className="flex justify-between items-center">
+                <div className="space-y-2 pt-4 border-t border-rule-subtle text-sm">
+                  <div className="flex justify-between">
                     <span className="label-caps">passport</span>
                     <a
-                      href={`${EXPLORER}/address/${agent.aaAddress}`}
+                      href={`${EXPLORER}/address/${SIBYL_AGENTS.trader.aaAddress}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-mono text-ink hover:text-signal-deep transition-colors"
                     >
-                      {truncateAddress(agent.aaAddress)} ↗
+                      {truncateAddress(SIBYL_AGENTS.trader.aaAddress)} ↗
                     </a>
                   </div>
-                  {'kitepass' in agent && agent.kitepass && (
-                    <div className="flex justify-between items-center">
-                      <span className="label-caps">kitepass</span>
-                      <a
-                        href={`${EXPLORER}/address/${agent.kitepass}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-mono text-ink hover:text-signal-deep transition-colors"
-                      >
-                        {truncateAddress(agent.kitepass)} ↗
-                      </a>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between">
+                    <span className="label-caps">kitepass</span>
+                    <a
+                      href={`${EXPLORER}/address/${SIBYL_AGENTS.trader.kitepass}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-ink hover:text-signal-deep transition-colors"
+                    >
+                      {truncateAddress(SIBYL_AGENTS.trader.kitepass)} ↗
+                    </a>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="label-caps">USDT</span>
-                    <span className="font-mono tabular text-ink">
-                      {agentUsdtMap[agent.name]?.toFixed(4) ?? '0.0000'}
-                    </span>
+                    <span className="font-mono tabular text-ink">{traderUsdt.toFixed(4)}</span>
                   </div>
                 </div>
               </div>
-            ))}
+
+              <div className="card-paper p-7 rounded-sm group">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="font-display italic text-2xl text-ink">
+                    {SIBYL_AGENTS.guardian.tagline}
+                  </div>
+                  <span className="label-caps">{SIBYL_AGENTS.guardian.name}</span>
+                </div>
+                <div className="text-sm text-ink-muted mb-5 leading-relaxed">
+                  {SIBYL_AGENTS.guardian.role}
+                </div>
+                <div className="space-y-2 pt-4 border-t border-rule-subtle text-sm">
+                  <div className="flex justify-between">
+                    <span className="label-caps">passport</span>
+                    <a
+                      href={`${EXPLORER}/address/${SIBYL_AGENTS.guardian.aaAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-ink hover:text-signal-deep transition-colors"
+                    >
+                      {truncateAddress(SIBYL_AGENTS.guardian.aaAddress)} ↗
+                    </a>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="label-caps">kitepass</span>
+                    <a
+                      href={`${EXPLORER}/address/${SIBYL_AGENTS.guardian.kitepass}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-ink hover:text-signal-deep transition-colors"
+                    >
+                      {truncateAddress(SIBYL_AGENTS.guardian.kitepass)} ↗
+                    </a>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="label-caps">USDT</span>
+                    <span className="font-mono tabular text-ink">{guardianUsdt.toFixed(4)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-5 grid md:grid-cols-2 gap-5">
-            <div className="card-paper p-8 md:p-10 rounded-sm">
-              <div className="label-caps mb-3">first x402 payment</div>
-              <div className="font-display italic text-2xl md:text-3xl mb-3 text-ink">
-                Trader AA <span className="text-signal-deep not-italic">→</span> Analyst AA
+          {/* Contract primitives */}
+          <div>
+            <div className="label-caps mb-5">contracts</div>
+            <div className="grid md:grid-cols-3 gap-5">
+              <div className="card-paper p-7 rounded-sm">
+                <div className="label-caps mb-3">attestations</div>
+                <div className="font-display italic text-xl mb-3 text-ink">
+                  SibylAttestations
+                </div>
+                <div className="text-sm text-ink-muted mb-5 leading-relaxed">
+                  Every outcome, permanently linked to the analyst that called it.
+                </div>
+                <a
+                  href={`${EXPLORER}/address/${SIBYL_CONTRACTS.attestations}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-ink-muted hover:text-signal-deep transition-colors"
+                >
+                  {truncateAddress(SIBYL_CONTRACTS.attestations, 6)} ↗
+                </a>
               </div>
-              <div className="text-sm text-ink-muted mb-6 leading-relaxed">
-                0.005 USDT settled in 8.6 seconds on Kite L1. The first
-                autonomous agent-to-agent payment in the Sibyl economy.
-              </div>
-              <a
-                href={`${EXPLORER}/tx/${KNOWN_TXS.firstX402Payment}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-xs text-ink-muted hover:text-signal-deep transition-colors inline-flex items-center gap-1"
-              >
-                {truncateAddress(KNOWN_TXS.firstX402Payment, 8)} ↗
-              </a>
-            </div>
 
-            <div className="card-paper p-8 md:p-10 rounded-sm">
-              <div className="label-caps mb-3">attestation contract</div>
-              <div className="font-display italic text-2xl md:text-3xl mb-3 text-ink">
-                SibylAttestations
+              <div className="card-paper p-7 rounded-sm">
+                <div className="label-caps mb-3">analyst registry</div>
+                <div className="font-display italic text-xl mb-3 text-ink">
+                  SibylAnalysts
+                </div>
+                <div className="text-sm text-ink-muted mb-5 leading-relaxed">
+                  Open registry. Anyone can deploy and compete.
+                </div>
+                <a
+                  href={`${EXPLORER}/address/${SIBYL_CONTRACTS.analysts}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-ink-muted hover:text-signal-deep transition-colors"
+                >
+                  {truncateAddress(SIBYL_CONTRACTS.analysts, 6)} ↗
+                </a>
               </div>
-              <div className="text-sm text-ink-muted mb-6 leading-relaxed">
-                Schema baked on-chain. Every outcome permanently linked to the
-                analyst that called it. Queryable by anyone.
+
+              <div className="card-paper p-7 rounded-sm">
+                <div className="label-caps mb-3">first x402 payment</div>
+                <div className="font-display italic text-xl mb-3 text-ink">
+                  Trader <span className="text-signal-deep not-italic">→</span> Analyst
+                </div>
+                <div className="text-sm text-ink-muted mb-5 leading-relaxed">
+                  0.005 USDT settled in 8.6s on Kite L1.
+                </div>
+                <a
+                  href={`${EXPLORER}/tx/${KNOWN_TXS.firstX402Payment}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs text-ink-muted hover:text-signal-deep transition-colors"
+                >
+                  {truncateAddress(KNOWN_TXS.firstX402Payment, 6)} ↗
+                </a>
               </div>
-              <a
-                href={`${EXPLORER}/address/${SIBYL_CONTRACTS.attestations}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-xs text-ink-muted hover:text-signal-deep transition-colors inline-flex items-center gap-1"
-              >
-                {truncateAddress(SIBYL_CONTRACTS.attestations, 8)} ↗
-              </a>
             </div>
           </div>
         </div>
