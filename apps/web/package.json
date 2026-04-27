@@ -1,6 +1,6 @@
 {
   "name": "sibyl-web",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
@@ -15,6 +15,7 @@
     "viem": "^2.21.0",
     "ethers": "^6.13.0",
     "gokite-aa-sdk": "latest",
+    "dotenv": "^16.4.5",
     "clsx": "^2.1.1",
     "motion": "^11.11.0"
   },
