@@ -219,7 +219,7 @@ export async function* deployAnalyst(args: {
         };
         return null;
       }
-      deployTxHash = result.status.transactionHash;
+      deployTxHash = result.status.transactionHash ?? null;
     } catch (err: any) {
       yield {
         step: 'error',
