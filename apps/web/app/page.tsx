@@ -15,6 +15,7 @@ import {
 } from '@/lib/kite';
 import { MissionControl } from '@/components/MissionControl';
 import { Leaderboard } from '@/components/Leaderboard';
+import { DeployAnalyst } from '@/components/DeployAnalyst';
 
 export const revalidate = 10;
 
@@ -127,7 +128,6 @@ function OutcomeDot({ outcome }: { outcome: Outcome }) {
 }
 
 export default async function HomePage() {
-  // Use the leader (top of leaderboard) as the hero's "headline" analyst
   const leaderboard = await loadLeaderboard();
   const leader = leaderboard.find((e) => e.hasHistory) ?? leaderboard[0];
 
@@ -146,7 +146,9 @@ export default async function HomePage() {
           style={{ animationDelay: '0ms' }}
         >
           <span>Sibyl · Proof of Alpha</span>
-          <span className="hidden md:inline">Kite L1 · Testnet · {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}</span>
+          <span className="hidden md:inline">
+            Kite L1 · Testnet · {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
+          </span>
           <span className="md:hidden">Kite L1</span>
         </header>
 
@@ -186,15 +188,10 @@ export default async function HomePage() {
                 className="group inline-flex items-center gap-2 border border-rule hover:border-ink bg-paper-elevated px-5 py-2.5 rounded-sm shadow-card hover:shadow-card-hover transition-all"
               >
                 See the leaderboard
-                <span className="text-signal group-hover:translate-x-0.5 transition-transform">
-                  →
-                </span>
+                <span className="text-signal group-hover:translate-x-0.5 transition-transform">→</span>
               </a>
-              <a
-                href="#primitives"
-                className="text-ink-secondary hover:text-ink transition-colors"
-              >
-                How it works
+              <a href="#deploy" className="text-ink-secondary hover:text-ink transition-colors">
+                Mint your analyst →
               </a>
             </div>
           </div>
@@ -298,7 +295,7 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* ─── LEDGER BAND — manila/kraft ─── */}
+      {/* ─── LEDGER BAND ─── */}
       {analystState && analystState.attestations.length > 0 && (
         <section className="relative ledger-surface border-y-2 border-manila-border overflow-hidden">
           <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28 relative z-10">
@@ -402,9 +399,7 @@ export default async function HomePage() {
           <div className="flex items-baseline justify-between mb-12">
             <div>
               <div className="label-caps mb-3">the marketplace</div>
-              <h2 className="font-display text-h2">
-                Analysts on Sibyl.
-              </h2>
+              <h2 className="font-display text-h2">Analysts on Sibyl.</h2>
               <p className="mt-4 max-w-xl text-base text-ink-secondary leading-relaxed">
                 Anyone can deploy an analyst. The chain decides if they're any good.{' '}
                 <span className="text-ink">Reputation is permissionless.</span>
@@ -424,8 +419,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ─── PRIMITIVES (operator agents + key contracts) ─── */}
-      <section id="primitives" className="border-t border-rule-subtle bg-paper-subtle">
+      {/* ─── DEPLOY YOUR OWN ANALYST ─── */}
+      <section id="deploy" className="border-t border-rule-subtle bg-paper-subtle">
+        <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
+          <DeployAnalyst />
+        </div>
+      </section>
+
+      {/* ─── PRIMITIVES ─── */}
+      <section id="primitives" className="border-t border-rule-subtle bg-paper">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
           <div className="flex items-baseline justify-between mb-12">
             <h2 className="font-display text-h2">
@@ -434,7 +436,6 @@ export default async function HomePage() {
             <span className="label-caps">Primitives</span>
           </div>
 
-          {/* Operator agents — Trader + Guardian */}
           <div className="mb-12">
             <div className="label-caps mb-5">operators</div>
             <div className="grid md:grid-cols-2 gap-5">
@@ -520,15 +521,12 @@ export default async function HomePage() {
             </div>
           </div>
 
-          {/* Contract primitives */}
           <div>
             <div className="label-caps mb-5">contracts</div>
             <div className="grid md:grid-cols-3 gap-5">
               <div className="card-paper p-7 rounded-sm">
                 <div className="label-caps mb-3">attestations</div>
-                <div className="font-display italic text-xl mb-3 text-ink">
-                  SibylAttestations
-                </div>
+                <div className="font-display italic text-xl mb-3 text-ink">SibylAttestations</div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
                   Every outcome, permanently linked to the analyst that called it.
                 </div>
@@ -544,9 +542,7 @@ export default async function HomePage() {
 
               <div className="card-paper p-7 rounded-sm">
                 <div className="label-caps mb-3">analyst registry</div>
-                <div className="font-display italic text-xl mb-3 text-ink">
-                  SibylAnalysts
-                </div>
+                <div className="font-display italic text-xl mb-3 text-ink">SibylAnalysts</div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
                   Open registry. Anyone can deploy and compete.
                 </div>

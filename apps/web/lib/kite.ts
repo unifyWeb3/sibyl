@@ -106,6 +106,7 @@ export const SIBYL_ATTESTATIONS_ABI = [
 ] as const;
 
 export const SIBYL_ANALYSTS_ABI = [
+  // ─── reads ────────────────────────────────────────────────────────────────
   {
     type: 'function',
     name: 'totalAnalysts',
@@ -119,6 +120,13 @@ export const SIBYL_ANALYSTS_ABI = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'address[]' }],
+  },
+  {
+    type: 'function',
+    name: 'isRegistered',
+    stateMutability: 'view',
+    inputs: [{ name: 'aa', type: 'address' }],
+    outputs: [{ type: 'bool' }],
   },
   {
     type: 'function',
@@ -159,6 +167,31 @@ export const SIBYL_ANALYSTS_ABI = [
       },
     ],
   },
+  // ─── writes ───────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    name: 'registerSelf',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'aa', type: 'address' },
+      { name: 'name', type: 'string' },
+      { name: 'strategy', type: 'uint8' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'registerExisting',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'aa', type: 'address' },
+      { name: 'name', type: 'string' },
+      { name: 'strategy', type: 'uint8' },
+      { name: 'creator', type: 'address' },
+    ],
+    outputs: [],
+  },
+  // ─── events ───────────────────────────────────────────────────────────────
   {
     type: 'event',
     name: 'AnalystRegistered',
@@ -192,7 +225,6 @@ export interface AnalystEntry {
   strategy: Strategy;
   creator: Address;
   createdAt: number;
-  // Attestation stats (joined)
   total: number;
   wins: number;
   losses: number;
@@ -204,13 +236,8 @@ export interface AnalystEntry {
 
 // ─── Loaders ─────────────────────────────────────────────────────────────────
 
-/**
- * Load all analysts from SibylAnalysts, join each with their attestation summary,
- * and return ranked by cumulativeBps desc (then total desc as tiebreaker).
- */
 export async function loadLeaderboard(): Promise<AnalystEntry[]> {
   try {
-    // Page through registry — 50 is plenty for the foreseeable future
     const analysts = (await publicClient.readContract({
       address: SIBYL_CONTRACTS.analysts,
       abi: SIBYL_ANALYSTS_ABI,
@@ -253,7 +280,7 @@ export async function loadLeaderboard(): Promise<AnalystEntry[]> {
       const hitRate = scored > 0 ? wins / scored : 0;
 
       entries.push({
-        rank: 0, // assigned after sort
+        rank: 0,
         aa: a.aa,
         name: a.name,
         strategy: strategyLabel(a.strategy),
@@ -269,7 +296,6 @@ export async function loadLeaderboard(): Promise<AnalystEntry[]> {
       });
     }
 
-    // Sort: hasHistory ones first by cumulativeBps desc, then by total desc
     entries.sort((a, b) => {
       if (a.hasHistory !== b.hasHistory) return a.hasHistory ? -1 : 1;
       if (a.cumulativeBps !== b.cumulativeBps) return b.cumulativeBps - a.cumulativeBps;
@@ -289,7 +315,8 @@ export async function loadLeaderboard(): Promise<AnalystEntry[]> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-export function truncateAddress(addr: string, len = 6): string {
+export function truncateAddress(addr: string | null | undefined, len = 6): string {
+  if (!addr || typeof addr !== 'string') return '\u2014'; // em dash
   if (addr.length <= len * 2 + 2) return addr;
   return `${addr.slice(0, len + 2)}\u2026${addr.slice(-len)}`;
 }

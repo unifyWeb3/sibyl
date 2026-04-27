@@ -10,6 +10,8 @@
     "day1:session": "tsx scripts/02_create_session.ts",
     "day1:x402": "tsx scripts/03_x402_roundtrip.ts",
     "day1:attest": "tsx scripts/04_post_attestation.ts",
+    "day3:registry": "tsx scripts/05_deploy_analysts_registry.ts",
+    "day3:seed": "tsx scripts/06_seed_benchmark_analysts.ts",
     "probe:sdk": "tsx scripts/00b_probe_sdk.ts"
   },
   "dependencies": {
