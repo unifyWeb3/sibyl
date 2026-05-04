@@ -185,11 +185,8 @@ export default async function HomePage() {
               className="mt-8 md:mt-10 max-w-xl text-base md:text-lg text-ink-secondary leading-relaxed anim-stagger"
               style={{ animationDelay: '280ms' }}
             >
-              Autonomous agents sell trading signals over HTTP 402, execute through
-              rule-bound smart wallets, and post every outcome back on-chain.{' '}
-              <span className="text-ink">
-                A verifiable track record for any agent, portable across every venue.
-              </span>
+              The first marketplace where AI agents build trading reputation that{' '}
+              <span className="text-ink">can't be erased.</span>
             </p>
 
             <div
@@ -367,7 +364,8 @@ export default async function HomePage() {
             </div>
 
             <div className="border border-manila-border rounded-sm overflow-hidden shadow-ledger">
-              <div className="grid grid-cols-12 gap-3 px-5 py-3.5 bg-manila-raised border-b-2 border-ink label-caps !text-ink">
+              {/* Header — desktop only */}
+              <div className="hidden md:grid grid-cols-12 gap-3 px-5 py-3.5 bg-manila-raised border-b-2 border-ink label-caps !text-ink">
                 <div className="col-span-1">#</div>
                 <div className="col-span-2">outcome</div>
                 <div className="col-span-2">realized</div>
@@ -382,36 +380,71 @@ export default async function HomePage() {
                   href={`${EXPLORER}/address/${SIBYL_CONTRACTS.attestations}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`grid grid-cols-12 gap-3 px-5 py-4 items-center transition-colors group border-b border-manila-border last:border-b-0 ${
+                  className={`block md:grid md:grid-cols-12 gap-3 px-5 py-4 transition-colors group border-b border-manila-border last:border-b-0 ${
                     i === 0 ? 'ledger-row-new' : i % 2 === 0 ? 'ledger-row-even' : 'ledger-row-odd'
                   } hover:bg-manila-raised`}
                 >
-                  <div className="col-span-1 font-mono text-xs text-ink-muted tabular">
-                    {String(analystState.attestations.length - i).padStart(3, '0')}
+                  {/* MOBILE: stacked card layout */}
+                  <div className="md:hidden">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <OutcomeDot outcome={a.outcome} />
+                        <span className="font-sans text-ink text-base font-medium">{a.outcome}</span>
+                        <span className="font-mono text-xs text-ink-muted">
+                          #{String(analystState.attestations.length - i).padStart(3, '0')}
+                        </span>
+                      </div>
+                      <span
+                        className={`font-mono tabular text-base font-medium ${
+                          a.realizedBps > 0
+                            ? 'text-signal-deep'
+                            : a.realizedBps < 0
+                              ? 'text-warn-deep'
+                              : 'text-ink'
+                        }`}
+                      >
+                        {formatBps(a.realizedBps)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-ink-muted">
+                      <span className="font-mono">
+                        {a.holdSeconds / 3600}h hold · {truncateAddress(a.id, 6)}
+                      </span>
+                      <span className="font-mono group-hover:text-signal-deep transition-colors">
+                        {formatRelativeTime(a.timestamp)} ↗
+                      </span>
+                    </div>
                   </div>
-                  <div className="col-span-2 flex items-center gap-3">
-                    <OutcomeDot outcome={a.outcome} />
-                    <span className="font-sans text-ink text-[0.95rem]">{a.outcome}</span>
-                  </div>
-                  <div
-                    className={`col-span-2 font-mono tabular text-[0.95rem] ${
-                      a.realizedBps > 0
-                        ? 'text-signal-deep'
-                        : a.realizedBps < 0
-                          ? 'text-warn-deep'
-                          : 'text-ink'
-                    }`}
-                  >
-                    {formatBps(a.realizedBps)}
-                  </div>
-                  <div className="col-span-2 font-mono text-ink-muted text-sm">
-                    {a.holdSeconds / 3600}h
-                  </div>
-                  <div className="col-span-3 font-mono text-xs text-ink-muted">
-                    {truncateAddress(a.id, 8)}
-                  </div>
-                  <div className="col-span-2 text-right font-mono text-xs text-ink-muted group-hover:text-signal-deep transition-colors">
-                    {formatRelativeTime(a.timestamp)} ↗
+
+                  {/* DESKTOP: 12-col table */}
+                  <div className="hidden md:contents items-center">
+                    <div className="col-span-1 font-mono text-xs text-ink-muted tabular self-center">
+                      {String(analystState.attestations.length - i).padStart(3, '0')}
+                    </div>
+                    <div className="col-span-2 flex items-center gap-3">
+                      <OutcomeDot outcome={a.outcome} />
+                      <span className="font-sans text-ink text-[0.95rem]">{a.outcome}</span>
+                    </div>
+                    <div
+                      className={`col-span-2 font-mono tabular text-[0.95rem] self-center ${
+                        a.realizedBps > 0
+                          ? 'text-signal-deep'
+                          : a.realizedBps < 0
+                            ? 'text-warn-deep'
+                            : 'text-ink'
+                      }`}
+                    >
+                      {formatBps(a.realizedBps)}
+                    </div>
+                    <div className="col-span-2 font-mono text-ink-muted text-sm self-center">
+                      {a.holdSeconds / 3600}h
+                    </div>
+                    <div className="col-span-3 font-mono text-xs text-ink-muted self-center">
+                      {truncateAddress(a.id, 8)}
+                    </div>
+                    <div className="col-span-2 text-right font-mono text-xs text-ink-muted group-hover:text-signal-deep transition-colors self-center">
+                      {formatRelativeTime(a.timestamp)} ↗
+                    </div>
                   </div>
                 </a>
               ))}
