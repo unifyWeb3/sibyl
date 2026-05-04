@@ -1,0 +1,64 @@
+name: Sibyl autonomous attestation
+
+# Runs every 4 hours at 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
+# Aligned with the 4-hour signal boundary baked into the landing page countdown.
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  # Allow manual runs from the Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      KITE_RPC_URL: https://rpc-testnet.gokite.ai
+      HACKATHON_PRIVATE_KEY: ${{ secrets.HACKATHON_PRIVATE_KEY }}
+      # Contract + agent addresses (gitignored from .sibyl/, inlined here)
+      SIBYL_ATTESTATIONS_V2: '0x2Dc6a66Fd4BF69Abe04953c0F51995B2cF773e29'
+      SIBYL_ANALYST_AA: '0x55Db3fbe402F8FB7a8B159A2d145fFba7CAd3Bd7'
+      SIBYL_TRADER_AA: '0x425D2e74AB743F39E3d47418e866e1d20DB8b83A'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Reconstruct .sibyl files from env
+        run: |
+          mkdir -p .sibyl
+          cat > .sibyl/contracts.json <<EOF
+          {
+            "contracts": {
+              "SibylAttestationsV2": {
+                "address": "$SIBYL_ATTESTATIONS_V2"
+              }
+            }
+          }
+          EOF
+          cat > .sibyl/agents.json <<EOF
+          {
+            "agents": {
+              "analyst": { "aaAddress": "$SIBYL_ANALYST_AA" },
+              "trader":  { "aaAddress": "$SIBYL_TRADER_AA" }
+            }
+          }
+          EOF
+
+      - name: Run autonomous attestation
+        run: pnpm tsx scripts/10_autonomous_attest.ts
