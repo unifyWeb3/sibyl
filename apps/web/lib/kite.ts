@@ -20,7 +20,10 @@ export const publicClient = createPublicClient({
 // ─── Sibyl on-chain contracts ────────────────────────────────────────────────
 
 export const SIBYL_CONTRACTS = {
-  attestations: '0xda942e2deB5E75f662234b0D30b96eBE3A9805D6' as Address,
+  // V2 — current. Adds priceUpdateHash for Pyth/Hermes verification.
+  attestations: '0x2Dc6a66Fd4BF69Abe04953c0F51995B2cF773e29' as Address,
+  // V1 — historical (Day 1 deterministic mock data). Kept for reference.
+  attestationsV1: '0xda942e2deB5E75f662234b0D30b96eBE3A9805D6' as Address,
   analysts:     '0xF2438BF71bcE90265580c1C74aA0D685562F93e0' as Address,
 } as const;
 
@@ -92,6 +95,7 @@ export const SIBYL_ATTESTATIONS_ABI = [
           { name: 'holdSeconds', type: 'uint32' },
           { name: 'outcome', type: 'uint8' },
           { name: 'timestamp', type: 'uint64' },
+          { name: 'priceUpdateHash', type: 'bytes32' },
         ],
       },
     ],
