@@ -49,12 +49,25 @@ async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | 
       args: [analyst],
     })) as [bigint, bigint, bigint, bigint, bigint];
 
-    const ids = (await publicClient.readContract({
-      address: SIBYL_CONTRACTS.attestations,
-      abi: SIBYL_ATTESTATIONS_ABI,
-      functionName: 'attestationsByAnalyst',
-      args: [analyst],
-    })) as readonly `0x${string}`[];
+    const totalN = Number(total);
+
+    // V2 stores attestations in a public mapping; iterate by index instead of
+    // fetching the whole array (which was the V1 helper). Cap at 50 for safety.
+    const ids: `0x${string}`[] = [];
+    const limit = Math.min(totalN, 50);
+    for (let i = 0; i < limit; i++) {
+      try {
+        const id = (await publicClient.readContract({
+          address: SIBYL_CONTRACTS.attestations,
+          abi: SIBYL_ATTESTATIONS_ABI,
+          functionName: 'attestationsByAnalyst',
+          args: [analyst, BigInt(i)],
+        })) as `0x${string}`;
+        ids.push(id);
+      } catch {
+        break;
+      }
+    }
 
     const attestations: AttestationRow[] = [];
     for (const id of ids) {
@@ -75,7 +88,6 @@ async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | 
       });
     }
 
-    const totalN = Number(total);
     const winsN = Number(wins);
     const scored = winsN + Number(losses) + Number(neutrals);
 

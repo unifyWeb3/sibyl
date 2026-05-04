@@ -65,18 +65,19 @@ export async function GET(req: NextRequest) {
 
     // ─── Read recent attestation IDs + outcomes ──
     const recentOutcomes: ('Win' | 'Loss' | 'Neutral')[] = [];
-    if (Number(total) > 0) {
-      const ids = (await publicClient.readContract({
-        address: SIBYL_CONTRACTS.attestations,
-        abi: SIBYL_ATTESTATIONS_ABI,
-        functionName: 'attestationsByAnalyst',
-        args: [aa],
-      })) as readonly `0x${string}`[];
-
-      // Take last 12, oldest first (so timeline reads left → right chronologically)
-      const recent = ids.slice(-12);
-      for (const id of recent) {
+    const totalN = Number(total);
+    if (totalN > 0) {
+      // V2 stores attestations in a public mapping. Iterate by index.
+      // Take the last min(total, 12) attestations chronologically.
+      const startIdx = Math.max(0, totalN - 12);
+      for (let i = startIdx; i < totalN; i++) {
         try {
+          const id = (await publicClient.readContract({
+            address: SIBYL_CONTRACTS.attestations,
+            abi: SIBYL_ATTESTATIONS_ABI,
+            functionName: 'attestationsByAnalyst',
+            args: [aa, BigInt(i)],
+          })) as `0x${string}`;
           const a = (await publicClient.readContract({
             address: SIBYL_CONTRACTS.attestations,
             abi: SIBYL_ATTESTATIONS_ABI,

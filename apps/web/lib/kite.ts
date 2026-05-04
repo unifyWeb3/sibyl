@@ -76,8 +76,18 @@ export const SIBYL_ATTESTATIONS_ABI = [
     type: 'function',
     name: 'attestationsByAnalyst',
     stateMutability: 'view',
+    inputs: [
+      { name: 'analyst', type: 'address' },
+      { name: 'index', type: 'uint256' },
+    ],
+    outputs: [{ type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'totalByAnalyst',
+    stateMutability: 'view',
     inputs: [{ name: 'analyst', type: 'address' }],
-    outputs: [{ type: 'bytes32[]' }],
+    outputs: [{ type: 'uint256' }],
   },
   {
     type: 'function',
