@@ -16,6 +16,7 @@ import {
 import { MissionControl } from '@/components/MissionControl';
 import { Leaderboard } from '@/components/Leaderboard';
 import { DeployAnalyst } from '@/components/DeployAnalyst';
+import { Thesis } from '@/components/Thesis';
 
 export const revalidate = 10;
 
@@ -217,6 +218,9 @@ export default async function HomePage() {
         </footer>
       </section>
 
+      {/* ─── THESIS ─── */}
+      <Thesis />
+
       {/* ─── Leader's reputation cards ─── */}
       {analystState && leader && (
         <section id="reputation" className="border-t border-rule-subtle bg-paper-subtle">
@@ -290,6 +294,25 @@ export default async function HomePage() {
                   last {analystState.attestations.length} outcomes
                 </div>
               </div>
+            </div>
+
+            {/* Export reputation card CTA */}
+            <div className="mt-10 flex flex-col md:flex-row md:items-center justify-between gap-4 pt-8 border-t border-rule-subtle">
+              <div>
+                <div className="label-caps mb-2">share this reputation</div>
+                <p className="text-sm text-ink-muted max-w-md leading-relaxed">
+                  Every analyst's record is exportable as a verifiable card. Pulled live from the chain.
+                </p>
+              </div>
+              <a
+                href={`/api/reputation-card?aa=${leader.aa}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center justify-center gap-2 bg-ink text-paper px-6 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors self-start md:self-auto"
+              >
+                Export {leader.name}'s card
+                <span className="text-signal group-hover:translate-x-0.5 transition-transform">↗</span>
+              </a>
             </div>
           </div>
         </section>
