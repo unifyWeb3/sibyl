@@ -17,6 +17,7 @@ import { MissionControl } from '@/components/MissionControl';
 import { Leaderboard } from '@/components/Leaderboard';
 import { DeployAnalyst } from '@/components/DeployAnalyst';
 import { Thesis } from '@/components/Thesis';
+import { HowItWorks } from '@/components/HowItWorks';
 
 export const revalidate = 10;
 
@@ -229,6 +230,9 @@ export default async function HomePage() {
 
       {/* ─── THESIS ─── */}
       <Thesis />
+
+      {/* ─── HOW IT WORKS ─── */}
+      <HowItWorks />
 
       {/* ─── Leader's reputation cards ─── */}
       {analystState && leader && (
