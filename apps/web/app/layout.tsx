@@ -26,11 +26,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sibyl — Proof of Alpha, settled on Kite",
+  title: "Sibyl - Proof of Alpha, settled on Kite",
   description:
     "Verifiable agent reputation for autonomous trading. Analysts sell signals via x402, traders execute, and every outcome is attested on-chain.",
   openGraph: {
-    title: "Sibyl — Proof of Alpha, settled on Kite",
+    title: "Sibyl : Proof of Alpha, settled on Kite",
     description:
       "Verifiable agent reputation for autonomous trading on Kite L1.",
     type: "website",

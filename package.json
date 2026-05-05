@@ -11,6 +11,7 @@
     "day1:x402": "tsx scripts/03_x402_roundtrip.ts",
     "day1:attest": "tsx scripts/04_post_attestation.ts",
     "day3:registry": "tsx scripts/05_deploy_analysts_registry.ts",
+    "day3:v2": "tsx scripts/07_deploy_v2.ts",
     "day3:seed": "tsx scripts/06_seed_benchmark_analysts.ts",
     "probe:sdk": "tsx scripts/00b_probe_sdk.ts"
   },

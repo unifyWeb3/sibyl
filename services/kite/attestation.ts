@@ -1,3 +1,4 @@
+import { keccak256, toUtf8Bytes, randomBytes } from 'ethers';
 /**
  * services/kite/attestation.ts
  *
@@ -17,6 +18,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { Wallet, ContractFactory, Contract, Interface, JsonRpcProvider } from 'ethers';
+
 
 const CONTRACTS_REGISTRY_PATH = '.sibyl/contracts.json';
 
@@ -47,7 +49,7 @@ export interface AnalystSummary {
   total: number;
   wins: number;
   losses: number;
-  neutrals: number;
+  // neutrals: number;
   cumulativeBps: number;
   hitRate: number;
   avgBps: number;
@@ -202,7 +204,8 @@ export async function fetchAttestationsForAnalyst(
     attestationsAddress,
     [
       'function attestationsByAnalyst(address) view returns (bytes32[])',
-      'function getAttestation(bytes32) view returns (tuple(bytes32 signalId, address analyst, address trader, int32 realizedBps, uint32 holdSeconds, uint8 outcome, uint64 timestamp))',
+      'function getAttestation(bytes32) view returns (tuple(bytes32 signalId, address analyst, address trader, int32 realizedBps, uint32 holdSeconds, uint8 outcome, uint256 timestamp, bytes32 priceUpdateHash))',
+
     ],
     provider
   );
@@ -228,6 +231,7 @@ export async function fetchAttestationsForAnalyst(
   return records;
 }
 
+// Replace fetchAnalystSummary in services/kite/attestation.ts
 export async function fetchAnalystSummary(
   rpcUrl: string,
   attestationsAddress: string,
@@ -237,27 +241,72 @@ export async function fetchAnalystSummary(
   const contract = new Contract(
     attestationsAddress,
     [
-      'function analystSummary(address) view returns (uint256 total, uint256 wins, uint256 losses, uint256 neutrals, int256 cumulativeBps)',
+      'function attestationsByAnalyst(address) view returns (bytes32[])',
+      'function getAttestation(bytes32) view returns (tuple(bytes32 signalId, address analyst, address trader, int32 realizedBps, uint32 holdSeconds, uint8 outcome, uint256 timestamp, bytes32 priceUpdateHash))',
+
     ],
     provider
   );
 
-  const [total, wins, losses, neutrals, cumulativeBps] = await contract.analystSummary(analyst);
-  const totalN = Number(total);
-  const winsN = Number(wins);
-  const scored = winsN + Number(losses) + Number(neutrals);
+  const ids = await contract.attestationsByAnalyst(analyst);
+  let wins = 0, losses = 0, cumulativeBps = 0;
+  for (const id of ids) {
+    const a = await contract.getAttestation(id);
+    if (Number(a.outcome) === 1) { wins++; cumulativeBps += Number(a.realizedBps); }
+    else if (Number(a.outcome) === 2) { losses++; }
+  }
 
+  const total = ids.length;
+  const scored = wins + losses;
   return {
-    total: totalN,
-    wins: winsN,
-    losses: Number(losses),
-    neutrals: Number(neutrals),
-    cumulativeBps: Number(cumulativeBps),
-    hitRate: scored > 0 ? winsN / scored : 0,
-    avgBps: totalN > 0 ? Number(cumulativeBps) / totalN : 0,
+    total,
+    wins,
+    losses,
+    //neutrals,
+    cumulativeBps,
+    hitRate: scored > 0 ? wins / scored : 0,
+    avgBps: total > 0 ? cumulativeBps / total : 0,
   };
 }
 
 function outcomeLabel(v: number): 'Win' | 'Loss' | 'Neutral' | 'Pending' {
   return (['Pending', 'Win', 'Loss', 'Neutral'] as const)[v] ?? 'Pending';
+}
+
+export async function postAttestationDirectV2(
+  signer: Wallet,
+  contractAddr: string,  // ← ensure this param exists
+  analystAddr: string,
+  bps: number,
+  holdSec: number,
+  outcomeEnum: number,
+  priceHash: string
+) {
+  const ABI = [
+    'event AttestationPosted(bytes32 indexed attestationId, address indexed analyst, address indexed trader, int32 realizedBps, uint8 outcome, bytes32 priceUpdateHash)',
+    'function postAttestation(bytes32 signalId, address analyst, int32 realizedBps, uint32 holdSeconds, uint8 outcome, bytes32 priceUpdateHash) external returns (bytes32)',
+  ];
+
+  const c = new Contract(contractAddr, ABI, signer); // ← contractAddr now defined
+  const signalId = keccak256(toUtf8Bytes(`sig_${Date.now()}_${randomBytes(4).toString('hex')}`));
+
+  const tx = await c.postAttestation(
+    signalId,
+    analystAddr,
+    bps,
+    holdSec,
+    outcomeEnum,
+    priceHash
+  );
+  const receipt = await tx.wait(2);
+
+  const iface = new Interface(ABI);
+  const posted = receipt.logs
+    .map(l => { try { return iface.parseLog(l); } catch { return null; } })
+    .find(log => log?.name === 'AttestationPosted');
+
+  return {
+    txHash: receipt.hash,
+    id: posted?.args?.attestationId || '0x', // ← safe access
+  };
 }
