@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import { type AnalystEntry, EXPLORER, formatBps, truncateAddress } from '@/lib/kite';
+import { SubscribeButton } from './SubscribeButton';
 
 interface LeaderboardProps {
   entries: AnalystEntry[];
@@ -156,6 +157,17 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                   </div>
                 </div>
               )}
+
+              {/* Mobile subscribe row */}
+              <div
+                className="mt-3 pt-3 border-t border-rule-subtle"
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                }}
+              >
+                <SubscribeButton analyst={e.aa} analystName={e.name} variant="inline" />
+              </div>
             </div>
 
             {/* DESKTOP LAYOUT — 12-col grid */}
@@ -216,12 +228,20 @@ export function Leaderboard({ entries }: LeaderboardProps) {
               </div>
 
               {/* Status */}
-              <div className="col-span-2 text-right">
+              <div className="col-span-2 text-right flex items-center justify-end gap-2">
                 {e.hasHistory ? (
                   <span className="label-caps !text-signal-deep">live ↗</span>
                 ) : (
                   <span className="label-caps !text-ink-tertiary">just joined</span>
                 )}
+                <span
+                  onClick={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                  }}
+                >
+                  <SubscribeButton analyst={e.aa} analystName={e.name} variant="inline" />
+                </span>
               </div>
             </div>
           </a>

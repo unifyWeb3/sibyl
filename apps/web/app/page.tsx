@@ -18,6 +18,7 @@ import { Leaderboard } from '@/components/Leaderboard';
 import { DeployAnalyst } from '@/components/DeployAnalyst';
 import { Thesis } from '@/components/Thesis';
 import { HowItWorks } from '@/components/HowItWorks';
+import { ConnectButton } from '@/components/ConnectButton';
 
 export const revalidate = 10;
 
@@ -160,10 +161,15 @@ export default async function HomePage() {
           style={{ animationDelay: '0ms' }}
         >
           <span>Sibyl · Proof of Alpha</span>
-          <span className="hidden md:inline">
-            Kite L1 · Testnet · {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
-          </span>
-          <span className="md:hidden">Kite L1</span>
+          <div className="flex items-center gap-3 md:gap-5">
+            <span className="hidden md:inline">
+              {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
+            </span>
+            <a href="/me" className="hidden md:inline hover:text-ink transition-colors">
+              my signals
+            </a>
+            <ConnectButton />
+          </div>
         </header>
 
         <div className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-6 md:px-12 py-10 md:py-16 grid md:grid-cols-[1.1fr_1fr] gap-12 md:gap-16 items-center">
