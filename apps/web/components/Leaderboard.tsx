@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { type AnalystEntry, EXPLORER, formatBps, truncateAddress } from '@/lib/kite';
 import { SubscribeButton } from './SubscribeButton';
+import { SubscriberCount } from './SubscriberCount';
 
 interface LeaderboardProps {
   entries: AnalystEntry[];
@@ -124,6 +125,7 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                     <span className="font-mono text-xs text-ink-tertiary">
                       {truncateAddress(e.aa, 4)}
                     </span>
+                    <SubscriberCount analyst={e.aa} />
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -166,7 +168,12 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                   ev.stopPropagation();
                 }}
               >
-                <SubscribeButton analyst={e.aa} analystName={e.name} variant="inline" />
+                <SubscribeButton
+                  analyst={e.aa}
+                  analystName={e.name}
+                  variant="inline"
+                  hasHistory={e.hasHistory}
+                />
               </div>
             </div>
 
@@ -196,6 +203,7 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                   <span className="font-mono text-xs text-ink-tertiary">
                     {truncateAddress(e.aa, 4)}
                   </span>
+                  <SubscriberCount analyst={e.aa} />
                 </div>
               </div>
 
@@ -240,7 +248,12 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                     ev.stopPropagation();
                   }}
                 >
-                  <SubscribeButton analyst={e.aa} analystName={e.name} variant="inline" />
+                  <SubscribeButton
+                    analyst={e.aa}
+                    analystName={e.name}
+                    variant="inline"
+                    hasHistory={e.hasHistory}
+                  />
                 </span>
               </div>
             </div>

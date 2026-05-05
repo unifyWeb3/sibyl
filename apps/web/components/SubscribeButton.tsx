@@ -29,11 +29,13 @@ interface SubscribeButtonProps {
   analyst: Address;
   analystName: string;
   variant?: 'inline' | 'block';
+  /** When false, the analyst has no on-chain history yet — disable subscriptions. */
+  hasHistory?: boolean;
 }
 
 type Phase = 'idle' | 'approving' | 'approve-pending' | 'subscribing' | 'subscribe-pending' | 'success' | 'error';
 
-export function SubscribeButton({ analyst, analystName, variant = 'inline' }: SubscribeButtonProps) {
+export function SubscribeButton({ analyst, analystName, variant = 'inline', hasHistory = true }: SubscribeButtonProps) {
   const { address, isConnected } = useAccount();
   const { setOpen } = useModal();
   const [showModal, setShowModal] = useState(false);
@@ -159,10 +161,18 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline' }: Su
     );
   }
 
+  // No history yet — nothing to subscribe to. Show ghost state instead of a
+  // misleading button. Subscribers can come back when this analyst has signals.
+  if (!hasHistory) {
+    return (
+      <span className="label-caps !text-ink-tertiary">no signals yet</span>
+    );
+  }
+
   return (
     <>
       <button type="button" onClick={handleClick} className={buttonClasses}>
-        {isConnected ? `Subscribe · 0.5 USDT` : `Connect to subscribe`}
+        Subscribe · 0.5 USDT
         {variant === 'block' && (
           <span className="text-signal group-hover:translate-x-0.5 transition-transform">→</span>
         )}

@@ -165,7 +165,7 @@ export default async function HomePage() {
             <span className="hidden md:inline">
               {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
             </span>
-            <a href="/me" className="hidden md:inline hover:text-ink transition-colors">
+            <a href="/me" className="hover:text-ink transition-colors">
               my signals
             </a>
             <ConnectButton />
