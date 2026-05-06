@@ -1,15 +1,16 @@
 'use client';
 
 /**
- * SubscribeButton — opens a modal that walks the user through subscribing.
+ * SubscribeButton — modal-driven approve+subscribe flow.
  *
- * Flow:
- *   1. If wallet not connected → "Connect to subscribe" → opens ConnectKit modal.
- *   2. If already subscribed → shows expiry, "Renew" extends another 30d.
- *   3. If allowance < 0.5 USDT → step A: approve. Step B: subscribe.
- *   4. If allowance OK → just subscribe.
+ * Day 12 fix: when approve tx confirms, automatically fire the subscribe tx
+ * without requiring a second button click. Eliminates the "user closes modal
+ * after approve, never subscribes, paid for nothing" failure mode that hit
+ * us on Day 11 testing.
  *
- * Uses wagmi v2 hooks. Stays compact (~200 lines incl. modal markup).
+ * The user still confirms TWO wallet pop-ups (approve, then subscribe) — that's
+ * inherent to ERC-20 + spend pattern. But they don't have to manually click
+ * a UI button between them.
  */
 
 import { useState, useEffect } from 'react';
@@ -29,13 +30,24 @@ interface SubscribeButtonProps {
   analyst: Address;
   analystName: string;
   variant?: 'inline' | 'block';
-  /** When false, the analyst has no on-chain history yet — disable subscriptions. */
   hasHistory?: boolean;
 }
 
-type Phase = 'idle' | 'approving' | 'approve-pending' | 'subscribing' | 'subscribe-pending' | 'success' | 'error';
+type Phase =
+  | 'idle'
+  | 'approving'
+  | 'approve-pending'
+  | 'subscribing'
+  | 'subscribe-pending'
+  | 'success'
+  | 'error';
 
-export function SubscribeButton({ analyst, analystName, variant = 'inline', hasHistory = true }: SubscribeButtonProps) {
+export function SubscribeButton({
+  analyst,
+  analystName,
+  variant = 'inline',
+  hasHistory = true,
+}: SubscribeButtonProps) {
   const { address, isConnected } = useAccount();
   const { setOpen } = useModal();
   const [showModal, setShowModal] = useState(false);
@@ -59,7 +71,7 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
     query: { enabled: !!address && !!isSubscribed },
   });
 
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDT_ADDRESS,
     abi: ERC20_ABI,
     functionName: 'allowance',
@@ -84,6 +96,41 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
   const needsApproval = (allowance ?? 0n) < PRICE_PER_PERIOD_WEI;
   const hasInsufficientBalance = (usdtBalance ?? 0n) < PRICE_PER_PERIOD_WEI;
 
+  // ─── Auto-advance: when approve confirms, immediately call subscribe ──
+  useEffect(() => {
+    if (!isTxSuccess) return;
+
+    if (phase === 'approve-pending') {
+      // Approve landed. Refresh allowance, then auto-fire subscribe.
+      (async () => {
+        await refetchAllowance();
+        // Reset the write hook so the next tx can be fired
+        resetWrite();
+        // Fire subscribe automatically — user already committed by clicking once
+        setPhase('subscribing');
+        setError(null);
+        writeContract(
+          {
+            address: SIBYL_SUBSCRIPTIONS_ADDRESS,
+            abi: SIBYL_SUBSCRIPTIONS_ABI,
+            functionName: 'subscribe',
+            args: [analyst],
+          },
+          {
+            onSuccess: () => setPhase('subscribe-pending'),
+            onError: (err) => {
+              setPhase('error');
+              setError(err.message ?? 'subscribe failed');
+            },
+          }
+        );
+      })();
+    } else if (phase === 'subscribe-pending') {
+      setPhase('success');
+      refetchIsSubscribed();
+    }
+  }, [isTxSuccess, phase, analyst, writeContract, refetchAllowance, refetchIsSubscribed, resetWrite]);
+
   // ─── Handlers ──
   function handleClick() {
     if (!isConnected) {
@@ -96,56 +143,46 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
     resetWrite();
   }
 
-  function handleApprove() {
-    setPhase('approving');
+  function handleStart() {
     setError(null);
-    writeContract(
-      {
-        address: USDT_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'approve',
-        args: [SIBYL_SUBSCRIPTIONS_ADDRESS, PRICE_PER_PERIOD_WEI],
-      },
-      {
-        onSuccess: () => setPhase('approve-pending'),
-        onError: (err) => {
-          setPhase('error');
-          setError(err.message ?? 'approve failed');
+    if (needsApproval) {
+      // Step 1 of 2: approve (subscribe will auto-fire on confirm)
+      setPhase('approving');
+      writeContract(
+        {
+          address: USDT_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [SIBYL_SUBSCRIPTIONS_ADDRESS, PRICE_PER_PERIOD_WEI],
         },
-      }
-    );
-  }
-
-  function handleSubscribe() {
-    setPhase('subscribing');
-    setError(null);
-    writeContract(
-      {
-        address: SIBYL_SUBSCRIPTIONS_ADDRESS,
-        abi: SIBYL_SUBSCRIPTIONS_ABI,
-        functionName: 'subscribe',
-        args: [analyst],
-      },
-      {
-        onSuccess: () => setPhase('subscribe-pending'),
-        onError: (err) => {
-          setPhase('error');
-          setError(err.message ?? 'subscribe failed');
+        {
+          onSuccess: () => setPhase('approve-pending'),
+          onError: (err) => {
+            setPhase('error');
+            setError(err.message ?? 'approve failed');
+          },
+        }
+      );
+    } else {
+      // Already approved — go straight to subscribe
+      setPhase('subscribing');
+      writeContract(
+        {
+          address: SIBYL_SUBSCRIPTIONS_ADDRESS,
+          abi: SIBYL_SUBSCRIPTIONS_ABI,
+          functionName: 'subscribe',
+          args: [analyst],
         },
-      }
-    );
-  }
-
-  // Auto-advance phase when tx confirms
-  useEffect(() => {
-    if (isTxSuccess && phase === 'approve-pending') {
-      setPhase('idle'); // approval done; user can now hit Subscribe
-      resetWrite();
-    } else if (isTxSuccess && phase === 'subscribe-pending') {
-      setPhase('success');
-      refetchIsSubscribed();
+        {
+          onSuccess: () => setPhase('subscribe-pending'),
+          onError: (err) => {
+            setPhase('error');
+            setError(err.message ?? 'subscribe failed');
+          },
+        }
+      );
     }
-  }, [isTxSuccess, phase, resetWrite, refetchIsSubscribed]);
+  }
 
   // ─── Render: button ──
   const buttonClasses =
@@ -155,19 +192,31 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
 
   if (isConnected && isSubscribed) {
     return (
-      <span className={variant === 'block' ? 'label-caps !text-signal-deep' : 'label-caps !text-signal-deep'}>
+      <span className="label-caps !text-signal-deep">
         ● subscribed · {formatTimeRemaining(Number(timeLeft ?? 0n))}
       </span>
     );
   }
 
-  // No history yet — nothing to subscribe to. Show ghost state instead of a
-  // misleading button. Subscribers can come back when this analyst has signals.
   if (!hasHistory) {
-    return (
-      <span className="label-caps !text-ink-tertiary">no signals yet</span>
-    );
+    return <span className="label-caps !text-ink-tertiary">no signals yet</span>;
   }
+
+  // Live phase label for the action button — communicates auto-flow
+  const actionLabel = (() => {
+    if (phase === 'approving') return 'Confirm approve in wallet…';
+    if (phase === 'approve-pending') return 'Approve confirming…';
+    if (phase === 'subscribing') return 'Confirm subscribe in wallet…';
+    if (phase === 'subscribe-pending') return 'Subscribe confirming…';
+    return needsApproval ? 'Subscribe · 0.5 USDT' : 'Subscribe · 0.5 USDT';
+  })();
+
+  const isInFlight =
+    phase === 'approving' ||
+    phase === 'approve-pending' ||
+    phase === 'subscribing' ||
+    phase === 'subscribe-pending' ||
+    isTxConfirming;
 
   return (
     <>
@@ -178,18 +227,21 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
         )}
       </button>
 
-      {/* Modal */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-          onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
+          onClick={(e) => {
+            // Don't allow closing mid-flight — easy to miss-click
+            if (e.target === e.currentTarget && !isInFlight) setShowModal(false);
+          }}
         >
           <div className="bg-paper border border-ink rounded-sm max-w-md w-full p-7 md:p-9 relative shadow-card-hover">
             <button
               type="button"
-              onClick={() => setShowModal(false)}
+              onClick={() => !isInFlight && setShowModal(false)}
+              disabled={isInFlight}
               aria-label="Close"
-              className="absolute top-4 right-4 text-ink-muted hover:text-ink text-xl leading-none"
+              className="absolute top-4 right-4 text-ink-muted hover:text-ink text-xl leading-none disabled:opacity-30 disabled:cursor-not-allowed"
             >
               ×
             </button>
@@ -202,7 +254,6 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
               0.5 USDT · 30 days · See every signal in real time. Verifiable on-chain.
             </p>
 
-            {/* Balance */}
             <div className="text-sm pt-4 border-t border-rule-subtle space-y-2 mb-6">
               <div className="flex justify-between">
                 <span className="label-caps">your usdt</span>
@@ -231,25 +282,40 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
               </div>
             )}
 
-            {/* Step indicator */}
             <div className="flex items-center gap-2 mb-5 text-xs">
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs ${
-                  needsApproval ? 'bg-ink text-paper' : 'bg-signal text-paper'
+                  phase === 'subscribing' ||
+                  phase === 'subscribe-pending' ||
+                  phase === 'success'
+                    ? 'bg-signal text-paper'
+                    : phase === 'approving' || phase === 'approve-pending'
+                      ? 'bg-ink text-paper'
+                      : needsApproval
+                        ? 'bg-ink text-paper'
+                        : 'bg-signal text-paper'
                 }`}
               >
-                {needsApproval ? '1' : '✓'}
+                {needsApproval && phase !== 'subscribing' && phase !== 'subscribe-pending' && phase !== 'success'
+                  ? '1'
+                  : '✓'}
               </span>
               <span className="text-ink">Approve USDT</span>
               <span className="flex-1 h-px bg-rule-subtle mx-2" />
               <span
                 className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs ${
-                  needsApproval ? 'bg-ink-tertiary text-paper' : 'bg-ink text-paper'
+                  phase === 'success'
+                    ? 'bg-signal text-paper'
+                    : phase === 'subscribing' || phase === 'subscribe-pending'
+                      ? 'bg-ink text-paper'
+                      : 'bg-ink-tertiary text-paper'
                 }`}
               >
-                2
+                {phase === 'success' ? '✓' : '2'}
               </span>
-              <span className={needsApproval ? 'text-ink-muted' : 'text-ink'}>Subscribe</span>
+              <span className={phase === 'idle' && needsApproval ? 'text-ink-muted' : 'text-ink'}>
+                Subscribe
+              </span>
             </div>
 
             {error && (
@@ -258,11 +324,10 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
               </div>
             )}
 
-            {/* Action buttons */}
             {phase === 'success' ? (
               <div>
                 <div className="border border-signal-deep/40 bg-signal/10 px-4 py-3 rounded-sm text-sm text-signal-deep mb-4">
-                  ✓ Subscribed. You'll see {analystName}'s signals in real time.
+                  ✓ Subscribed. You'll see {analystName}'s signals in real time for 30 days.
                 </div>
                 <button
                   type="button"
@@ -272,32 +337,24 @@ export function SubscribeButton({ analyst, analystName, variant = 'inline', hasH
                   Done
                 </button>
               </div>
-            ) : needsApproval ? (
-              <button
-                type="button"
-                onClick={handleApprove}
-                disabled={hasInsufficientBalance || phase === 'approving' || phase === 'approve-pending' || isTxConfirming}
-                className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {phase === 'approving'
-                  ? 'Confirm in wallet…'
-                  : phase === 'approve-pending'
-                    ? 'Approving…'
-                    : 'Approve 0.5 USDT'}
-              </button>
             ) : (
               <button
                 type="button"
-                onClick={handleSubscribe}
-                disabled={hasInsufficientBalance || phase === 'subscribing' || phase === 'subscribe-pending' || isTxConfirming}
+                onClick={handleStart}
+                disabled={hasInsufficientBalance || isInFlight}
                 className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {phase === 'subscribing'
-                  ? 'Confirm in wallet…'
-                  : phase === 'subscribe-pending'
-                    ? 'Subscribing…'
-                    : 'Subscribe · 0.5 USDT'}
+                {actionLabel}
               </button>
+            )}
+
+            {/* Reassurance copy when in flight, since closing is blocked */}
+            {isInFlight && (
+              <p className="mt-3 text-center text-xs text-ink-muted">
+                {needsApproval
+                  ? 'Two wallet confirmations: approve, then subscribe. Stay on this screen.'
+                  : 'One wallet confirmation. Stay on this screen.'}
+              </p>
             )}
           </div>
         </div>
