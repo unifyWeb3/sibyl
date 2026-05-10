@@ -22,7 +22,7 @@ import {
 import {
   SIBYL_SUBSCRIPTIONS_ADDRESS,
   SIBYL_SUBSCRIPTIONS_ABI,
-  PRICE_PER_PERIOD_WEI,
+  PRICE_PER_DAY_WEI,
 } from '@/lib/subs';
 
 export const runtime = 'nodejs';
@@ -70,8 +70,8 @@ export async function GET(
       {
         error: 'subscription required',
         analyst,
-        priceWei: PRICE_PER_PERIOD_WEI.toString(),
-        priceHuman: '0.5 USDT',
+        priceWei: PRICE_PER_DAY_WEI.toString(),
+        priceHuman: '0.0167 USDT/day · ~0.5 USDT for 30 days',
         periodDays: 30,
         contract: SIBYL_SUBSCRIPTIONS_ADDRESS,
         hint: 'subscribe via /api/.. UI or call SibylSubscriptions.subscribe(analyst)',
@@ -80,7 +80,7 @@ export async function GET(
         status: 402,
         headers: {
           'x-payment-required': 'true',
-          'x-payment-amount': PRICE_PER_PERIOD_WEI.toString(),
+          'x-payment-amount': PRICE_PER_DAY_WEI.toString(),
           'x-payment-currency': 'USDT',
           'x-payment-contract': SIBYL_SUBSCRIPTIONS_ADDRESS,
         },

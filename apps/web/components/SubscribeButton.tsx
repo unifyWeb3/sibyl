@@ -1,16 +1,22 @@
 'use client';
 
 /**
- * SubscribeButton — modal-driven approve+subscribe flow.
+ * SubscribeButton — Day 13 redesign.
  *
- * Day 12 fix: when approve tx confirms, automatically fire the subscribe tx
- * without requiring a second button click. Eliminates the "user closes modal
- * after approve, never subscribes, paid for nothing" failure mode that hit
- * us on Day 11 testing.
+ * Modal flow:
+ *   1. Analyst summary card (name, strategy, hit rate, cumulative bps, sub count)
+ *   2. Duration selector (7d / 14d / 30d* / 60d, * = default)
+ *   3. Summary block: total cost · expires on <date> · what unlocks
+ *   4. Single CTA "Subscribe · X.XXXX USDT"
  *
- * The user still confirms TWO wallet pop-ups (approve, then subscribe) — that's
- * inherent to ERC-20 + spend pattern. But they don't have to manually click
- * a UI button between them.
+ * Wallet flow (after CTA):
+ *   - If allowance < cost → approve(cost), then auto-fire subscribe(analyst, days)
+ *   - If allowance >= cost → fire subscribe directly
+ *   - Modal blocks closing while in-flight
+ *   - On success → green confirmation with "View signals" + "Done"
+ *
+ * State freshness: refetchIsSubscribed on success so the leaderboard's
+ * "subscribed · 7d remaining" badge appears immediately.
  */
 
 import { useState, useEffect } from 'react';
@@ -21,14 +27,21 @@ import {
   SIBYL_SUBSCRIPTIONS_ABI,
   USDT_ADDRESS,
   ERC20_ABI,
-  PRICE_PER_PERIOD_WEI,
+  DURATION_OPTIONS,
+  quoteCostDays,
+  formatCostUsdt,
   formatTimeRemaining,
+  formatExpiryDate,
 } from '@/lib/subs';
 import { formatUnits, type Address } from 'viem';
 
 interface SubscribeButtonProps {
   analyst: Address;
   analystName: string;
+  strategy?: string;
+  hitRatePct?: number;
+  cumulativeBps?: number;
+  totalAttests?: number;
   variant?: 'inline' | 'block';
   hasHistory?: boolean;
 }
@@ -45,6 +58,10 @@ type Phase =
 export function SubscribeButton({
   analyst,
   analystName,
+  strategy,
+  hitRatePct,
+  cumulativeBps,
+  totalAttests,
   variant = 'inline',
   hasHistory = true,
 }: SubscribeButtonProps) {
@@ -53,6 +70,9 @@ export function SubscribeButton({
   const [showModal, setShowModal] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [selectedDays, setSelectedDays] = useState<number>(30);
+
+  const cost = quoteCostDays(selectedDays);
 
   // ─── Reads ──
   const { data: isSubscribed, refetch: refetchIsSubscribed } = useReadContract({
@@ -60,15 +80,15 @@ export function SubscribeButton({
     abi: SIBYL_SUBSCRIPTIONS_ABI,
     functionName: 'isSubscribed',
     args: address ? [address, analyst] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address, refetchInterval: showModal ? 4000 : 30000 },
   });
 
-  const { data: timeLeft } = useReadContract({
+  const { data: timeLeft, refetch: refetchTimeLeft } = useReadContract({
     address: SIBYL_SUBSCRIPTIONS_ADDRESS,
     abi: SIBYL_SUBSCRIPTIONS_ABI,
     functionName: 'timeRemaining',
     args: address ? [address, analyst] : undefined,
-    query: { enabled: !!address && !!isSubscribed },
+    query: { enabled: !!address && !!isSubscribed, refetchInterval: 30000 },
   });
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -93,20 +113,16 @@ export function SubscribeButton({
     hash: txHash,
   });
 
-  const needsApproval = (allowance ?? 0n) < PRICE_PER_PERIOD_WEI;
-  const hasInsufficientBalance = (usdtBalance ?? 0n) < PRICE_PER_PERIOD_WEI;
+  const needsApproval = (allowance ?? 0n) < cost;
+  const hasInsufficientBalance = (usdtBalance ?? 0n) < cost;
 
-  // ─── Auto-advance: when approve confirms, immediately call subscribe ──
+  // Auto-advance: approve confirms → fire subscribe; subscribe confirms → success
   useEffect(() => {
     if (!isTxSuccess) return;
-
     if (phase === 'approve-pending') {
-      // Approve landed. Refresh allowance, then auto-fire subscribe.
       (async () => {
         await refetchAllowance();
-        // Reset the write hook so the next tx can be fired
         resetWrite();
-        // Fire subscribe automatically — user already committed by clicking once
         setPhase('subscribing');
         setError(null);
         writeContract(
@@ -114,7 +130,7 @@ export function SubscribeButton({
             address: SIBYL_SUBSCRIPTIONS_ADDRESS,
             abi: SIBYL_SUBSCRIPTIONS_ABI,
             functionName: 'subscribe',
-            args: [analyst],
+            args: [analyst, BigInt(selectedDays)],
           },
           {
             onSuccess: () => setPhase('subscribe-pending'),
@@ -128,10 +144,10 @@ export function SubscribeButton({
     } else if (phase === 'subscribe-pending') {
       setPhase('success');
       refetchIsSubscribed();
+      refetchTimeLeft();
     }
-  }, [isTxSuccess, phase, analyst, writeContract, refetchAllowance, refetchIsSubscribed, resetWrite]);
+  }, [isTxSuccess, phase, analyst, selectedDays, writeContract, refetchAllowance, refetchIsSubscribed, refetchTimeLeft, resetWrite]);
 
-  // ─── Handlers ──
   function handleClick() {
     if (!isConnected) {
       setOpen(true);
@@ -140,20 +156,20 @@ export function SubscribeButton({
     setShowModal(true);
     setPhase('idle');
     setError(null);
+    setSelectedDays(30);
     resetWrite();
   }
 
   function handleStart() {
     setError(null);
     if (needsApproval) {
-      // Step 1 of 2: approve (subscribe will auto-fire on confirm)
       setPhase('approving');
       writeContract(
         {
           address: USDT_ADDRESS,
           abi: ERC20_ABI,
           functionName: 'approve',
-          args: [SIBYL_SUBSCRIPTIONS_ADDRESS, PRICE_PER_PERIOD_WEI],
+          args: [SIBYL_SUBSCRIPTIONS_ADDRESS, cost],
         },
         {
           onSuccess: () => setPhase('approve-pending'),
@@ -164,14 +180,13 @@ export function SubscribeButton({
         }
       );
     } else {
-      // Already approved — go straight to subscribe
       setPhase('subscribing');
       writeContract(
         {
           address: SIBYL_SUBSCRIPTIONS_ADDRESS,
           abi: SIBYL_SUBSCRIPTIONS_ABI,
           functionName: 'subscribe',
-          args: [analyst],
+          args: [analyst, BigInt(selectedDays)],
         },
         {
           onSuccess: () => setPhase('subscribe-pending'),
@@ -202,21 +217,22 @@ export function SubscribeButton({
     return <span className="label-caps !text-ink-tertiary">no signals yet</span>;
   }
 
-  // Live phase label for the action button — communicates auto-flow
-  const actionLabel = (() => {
-    if (phase === 'approving') return 'Confirm approve in wallet…';
-    if (phase === 'approve-pending') return 'Approve confirming…';
-    if (phase === 'subscribing') return 'Confirm subscribe in wallet…';
-    if (phase === 'subscribe-pending') return 'Subscribe confirming…';
-    return needsApproval ? 'Subscribe · 0.5 USDT' : 'Subscribe · 0.5 USDT';
-  })();
-
   const isInFlight =
     phase === 'approving' ||
     phase === 'approve-pending' ||
     phase === 'subscribing' ||
     phase === 'subscribe-pending' ||
     isTxConfirming;
+
+  const ctaLabel = (() => {
+    if (phase === 'approving') return 'Confirm approve in wallet…';
+    if (phase === 'approve-pending') return 'Approve confirming…';
+    if (phase === 'subscribing') return 'Confirm subscribe in wallet…';
+    if (phase === 'subscribe-pending') return 'Subscribe confirming…';
+    return `Subscribe · ${formatCostUsdt(cost)}`;
+  })();
+
+  const expiryTs = Math.floor(Date.now() / 1000) + selectedDays * 86400;
 
   return (
     <>
@@ -231,11 +247,10 @@ export function SubscribeButton({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
           onClick={(e) => {
-            // Don't allow closing mid-flight — easy to miss-click
             if (e.target === e.currentTarget && !isInFlight) setShowModal(false);
           }}
         >
-          <div className="bg-paper border border-ink rounded-sm max-w-md w-full p-7 md:p-9 relative shadow-card-hover">
+          <div className="bg-paper border border-ink rounded-sm max-w-lg w-full p-7 md:p-9 relative shadow-card-hover max-h-[90vh] overflow-y-auto">
             <button
               type="button"
               onClick={() => !isInFlight && setShowModal(false)}
@@ -246,88 +261,164 @@ export function SubscribeButton({
               ×
             </button>
 
-            <div className="label-caps mb-3">subscribe</div>
-            <h3 className="font-display text-2xl md:text-3xl text-ink mb-2 leading-tight">
-              {analystName}
-            </h3>
-            <p className="text-sm text-ink-muted mb-6 leading-relaxed">
-              0.5 USDT · 30 days · See every signal in real time. Verifiable on-chain.
-            </p>
+            <div className="label-caps mb-2">subscribe to</div>
 
-            <div className="text-sm pt-4 border-t border-rule-subtle space-y-2 mb-6">
-              <div className="flex justify-between">
-                <span className="label-caps">your usdt</span>
-                <span className="font-mono tabular text-ink">
-                  {formatUnits(usdtBalance ?? 0n, 18)} USDT
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="label-caps">price</span>
-                <span className="font-mono tabular text-ink">0.5 USDT</span>
-              </div>
-            </div>
+            {phase !== 'success' && (
+              <>
+                {/* ─── 1. Analyst summary ────────── */}
+                <div className="mb-6 pb-5 border-b border-rule-subtle">
+                  <h3 className="font-display text-2xl md:text-3xl text-ink leading-tight mb-1">
+                    {analystName}
+                  </h3>
+                  {strategy && (
+                    <div className="label-caps !text-ink-muted mb-3">{strategy} strategy</div>
+                  )}
+                  {(hitRatePct !== undefined || cumulativeBps !== undefined) && (
+                    <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
+                      {hitRatePct !== undefined && (
+                        <div>
+                          <div className="label-caps mb-0.5 text-[0.6rem]">hit rate</div>
+                          <div className="font-mono tabular text-base text-ink">
+                            {hitRatePct.toFixed(1)}<span className="text-ink-tertiary">%</span>
+                          </div>
+                        </div>
+                      )}
+                      {cumulativeBps !== undefined && (
+                        <div>
+                          <div className="label-caps mb-0.5 text-[0.6rem]">cumulative</div>
+                          <div className={`font-mono tabular text-base ${
+                            cumulativeBps > 0 ? 'text-signal-deep' :
+                            cumulativeBps < 0 ? 'text-warn-deep' : 'text-ink'
+                          }`}>
+                            {cumulativeBps > 0 ? '+' : ''}{cumulativeBps} bps
+                          </div>
+                        </div>
+                      )}
+                      {totalAttests !== undefined && (
+                        <div>
+                          <div className="label-caps mb-0.5 text-[0.6rem]">attests</div>
+                          <div className="font-mono tabular text-base text-ink">{totalAttests}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-            {hasInsufficientBalance && (
-              <div className="mb-5 border border-warn-deep/30 bg-warn-soft px-3 py-2 rounded-sm text-sm text-warn-deep">
-                Insufficient USDT. Hit the Kite faucet at{' '}
-                <a
-                  href="https://faucet.gokite.ai/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
+                {/* ─── 2. Duration selector ────────── */}
+                <div className="mb-6">
+                  <div className="label-caps mb-3">choose duration</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {DURATION_OPTIONS.map((opt) => {
+                      const optCost = quoteCostDays(opt.days);
+                      const isSelected = selectedDays === opt.days;
+                      return (
+                        <button
+                          key={opt.days}
+                          type="button"
+                          onClick={() => !isInFlight && setSelectedDays(opt.days)}
+                          disabled={isInFlight}
+                          className={`p-3 rounded-sm border transition-colors text-left ${
+                            isSelected
+                              ? 'border-ink bg-ink text-paper'
+                              : 'border-rule bg-paper-elevated text-ink hover:border-ink-secondary'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          <div className="font-display text-lg leading-tight">{opt.days}d</div>
+                          <div className={`font-mono text-[0.65rem] mt-0.5 ${
+                            isSelected ? 'text-paper/70' : 'text-ink-muted'
+                          }`}>
+                            {formatCostUsdt(optCost)}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ─── 3. Summary block ────────── */}
+                <div className="mb-5 p-4 bg-paper-subtle rounded-sm space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="label-caps">total cost</span>
+                    <span className="font-mono tabular text-ink font-medium">
+                      {formatCostUsdt(cost)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="label-caps">access until</span>
+                    <span className="font-mono tabular text-ink">
+                      {formatExpiryDate(expiryTs)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="label-caps">your usdt</span>
+                    <span className="font-mono tabular text-ink-muted">
+                      {formatUnits(usdtBalance ?? 0n, 18).slice(0, 8)} USDT
+                    </span>
+                  </div>
+                </div>
+
+                {/* What unlocks */}
+                <div className="mb-6 pl-3 border-l border-signal-deep/40">
+                  <div className="label-caps !text-signal-deep mb-2">you unlock</div>
+                  <ul className="space-y-1 text-sm text-ink-secondary">
+                    <li>· current bias + confidence</li>
+                    <li>· analyst reasoning per signal</li>
+                    <li>· full historical calls</li>
+                    <li>· exportable reputation card</li>
+                  </ul>
+                </div>
+
+                {hasInsufficientBalance && (
+                  <div className="mb-4 border border-warn-deep/30 bg-warn-soft px-3 py-2 rounded-sm text-sm text-warn-deep">
+                    Insufficient USDT for {selectedDays} days. Need {formatCostUsdt(cost)}.{' '}
+                    <a
+                      href="https://faucet.gokite.ai/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      Faucet ↗
+                    </a>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="mb-4 border border-warn-deep/30 bg-warn-soft px-3 py-2 rounded-sm text-xs text-warn-deep break-words">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleStart}
+                  disabled={hasInsufficientBalance || isInFlight}
+                  className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  faucet.gokite.ai
-                </a>
-                .
-              </div>
+                  {ctaLabel}
+                </button>
+
+                {isInFlight && (
+                  <p className="mt-3 text-center text-xs text-ink-muted">
+                    {needsApproval
+                      ? 'Two wallet confirmations: approve, then subscribe. Stay on this screen.'
+                      : 'One wallet confirmation. Stay on this screen.'}
+                  </p>
+                )}
+              </>
             )}
 
-            <div className="flex items-center gap-2 mb-5 text-xs">
-              <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs ${
-                  phase === 'subscribing' ||
-                  phase === 'subscribe-pending' ||
-                  phase === 'success'
-                    ? 'bg-signal text-paper'
-                    : phase === 'approving' || phase === 'approve-pending'
-                      ? 'bg-ink text-paper'
-                      : needsApproval
-                        ? 'bg-ink text-paper'
-                        : 'bg-signal text-paper'
-                }`}
-              >
-                {needsApproval && phase !== 'subscribing' && phase !== 'subscribe-pending' && phase !== 'success'
-                  ? '1'
-                  : '✓'}
-              </span>
-              <span className="text-ink">Approve USDT</span>
-              <span className="flex-1 h-px bg-rule-subtle mx-2" />
-              <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs ${
-                  phase === 'success'
-                    ? 'bg-signal text-paper'
-                    : phase === 'subscribing' || phase === 'subscribe-pending'
-                      ? 'bg-ink text-paper'
-                      : 'bg-ink-tertiary text-paper'
-                }`}
-              >
-                {phase === 'success' ? '✓' : '2'}
-              </span>
-              <span className={phase === 'idle' && needsApproval ? 'text-ink-muted' : 'text-ink'}>
-                Subscribe
-              </span>
-            </div>
-
-            {error && (
-              <div className="mb-4 border border-warn-deep/30 bg-warn-soft px-3 py-2 rounded-sm text-xs text-warn-deep break-words">
-                {error}
-              </div>
-            )}
-
-            {phase === 'success' ? (
-              <div>
-                <div className="border border-signal-deep/40 bg-signal/10 px-4 py-3 rounded-sm text-sm text-signal-deep mb-4">
-                  ✓ Subscribed. You'll see {analystName}'s signals in real time for 30 days.
+            {phase === 'success' && (
+              <div className="py-2">
+                <h3 className="font-display text-2xl md:text-3xl text-ink leading-tight mb-2">
+                  {analystName}
+                </h3>
+                <div className="border border-signal-deep/40 bg-signal/10 px-4 py-3 rounded-sm text-sm text-signal-deep mb-5">
+                  ✓ Subscribed for {selectedDays} days. Access until{' '}
+                  {formatExpiryDate(expiryTs)}.
+                </div>
+                <div className="space-y-2 text-sm text-ink-secondary mb-6">
+                  <div>You now see: bias, confidence, reasoning, history, exportable card.</div>
+                  <div>Next signal cycle: every 4 hours.</div>
                 </div>
                 <button
                   type="button"
@@ -337,24 +428,6 @@ export function SubscribeButton({
                   Done
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStart}
-                disabled={hasInsufficientBalance || isInFlight}
-                className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {actionLabel}
-              </button>
-            )}
-
-            {/* Reassurance copy when in flight, since closing is blocked */}
-            {isInFlight && (
-              <p className="mt-3 text-center text-xs text-ink-muted">
-                {needsApproval
-                  ? 'Two wallet confirmations: approve, then subscribe. Stay on this screen.'
-                  : 'One wallet confirmation. Stay on this screen.'}
-              </p>
             )}
           </div>
         </div>

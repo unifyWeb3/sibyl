@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * Leaderboard — ranked table of all registered Sibyl analysts.
+ * Leaderboard — Day 13 polish.
  *
- * Day 9 changes:
- *   - Show first 5 by default, "Show more" reveals 5 at a time.
- *   - Mobile (under 768px): rows stack as cards, no horizontal scroll.
- *   - Server-fetched data passed in as props from page.tsx (unchanged contract).
+ * Changes from Day 11:
+ *   - Pass strategy + hit rate + cumulative + total to SubscribeButton so the
+ *     subscribe modal shows real analyst stats in its summary block.
+ *   - No structural changes: pagination, mobile stacking, SubscriberCount all
+ *     preserved.
  */
 
 import { useState } from 'react';
@@ -69,7 +70,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
 
   return (
     <div className="border border-rule-subtle rounded-sm overflow-hidden bg-paper-elevated shadow-card">
-      {/* Header — desktop only */}
       <div className="hidden md:grid grid-cols-12 gap-3 px-5 py-3.5 bg-paper-subtle border-b border-rule-subtle label-caps">
         <div className="col-span-1">#</div>
         <div className="col-span-4">analyst</div>
@@ -96,12 +96,11 @@ export function Leaderboard({ entries }: LeaderboardProps) {
             rel="noopener noreferrer"
             className="block md:grid md:grid-cols-12 gap-3 px-5 py-5 md:items-center border-b border-rule-subtle last:border-b-0 hover:bg-paper-subtle transition-colors group relative"
           >
-            {/* Leader accent bar */}
             {isLeader && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-signal" aria-hidden />
             )}
 
-            {/* MOBILE LAYOUT — stacked card */}
+            {/* Mobile */}
             <div className="md:hidden">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
@@ -137,7 +136,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 </div>
               </div>
 
-              {/* Mobile stat row — only show when there's history */}
               {e.hasHistory && (
                 <div className="flex items-center gap-5 mt-3 pt-3 border-t border-rule-subtle">
                   <div>
@@ -160,7 +158,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 </div>
               )}
 
-              {/* Mobile subscribe row */}
               <div
                 className="mt-3 pt-3 border-t border-rule-subtle"
                 onClick={(ev) => {
@@ -171,20 +168,22 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 <SubscribeButton
                   analyst={e.aa}
                   analystName={e.name}
+                  strategy={e.strategy}
+                  hitRatePct={e.hasHistory ? e.hitRate * 100 : undefined}
+                  cumulativeBps={e.hasHistory ? e.cumulativeBps : undefined}
+                  totalAttests={e.hasHistory ? e.total : undefined}
                   variant="inline"
                   hasHistory={e.hasHistory}
                 />
               </div>
             </div>
 
-            {/* DESKTOP LAYOUT — 12-col grid */}
+            {/* Desktop */}
             <div className="hidden md:contents">
-              {/* Rank */}
               <div className="col-span-1 font-mono tabular text-sm text-ink-muted">
                 {String(e.rank).padStart(3, '0')}
               </div>
 
-              {/* Analyst */}
               <div className="col-span-4">
                 <div className="flex items-center gap-2">
                   <div className="font-display italic text-xl md:text-2xl text-ink leading-tight">
@@ -207,7 +206,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 </div>
               </div>
 
-              {/* Hit rate */}
               <div className="col-span-2 text-right">
                 {e.hasHistory ? (
                   <div className="font-mono tabular text-lg text-ink">
@@ -219,7 +217,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 )}
               </div>
 
-              {/* Cumulative */}
               <div className="col-span-2 text-right">
                 {e.hasHistory ? (
                   <div className={`font-mono tabular text-lg ${cumColor}`}>
@@ -230,12 +227,10 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 )}
               </div>
 
-              {/* Attestations count */}
               <div className="col-span-1 text-right font-mono tabular text-sm text-ink-muted">
                 {e.total}
               </div>
 
-              {/* Status */}
               <div className="col-span-2 text-right flex items-center justify-end gap-2">
                 {e.hasHistory ? (
                   <span className="label-caps !text-signal-deep">live ↗</span>
@@ -251,6 +246,10 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                   <SubscribeButton
                     analyst={e.aa}
                     analystName={e.name}
+                    strategy={e.strategy}
+                    hitRatePct={e.hasHistory ? e.hitRate * 100 : undefined}
+                    cumulativeBps={e.hasHistory ? e.cumulativeBps : undefined}
+                    totalAttests={e.hasHistory ? e.total : undefined}
                     variant="inline"
                     hasHistory={e.hasHistory}
                   />
@@ -261,7 +260,6 @@ export function Leaderboard({ entries }: LeaderboardProps) {
         );
       })}
 
-      {/* Show more / Footer */}
       {hasMore ? (
         <div className="px-5 py-4 bg-paper-subtle border-t border-rule-subtle flex items-center justify-between gap-3">
           <span className="label-caps">
