@@ -25,9 +25,10 @@ interface ExportCardButtonProps {
   analyst: string; // 0x address
   analystName: string;
   variant?: 'inline' | 'block';
+  label?: string; // override button label; defaults to "Download [Name]'s Card"
 }
 
-export function ExportCardButton({ analyst, analystName, variant = 'inline' }: ExportCardButtonProps) {
+export function ExportCardButton({ analyst, analystName, variant = 'inline', label }: ExportCardButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +81,7 @@ export function ExportCardButton({ analyst, analystName, variant = 'inline' }: E
       >
         {isLoading ? 'Exporting…' : (
           <>
-            Export card
+            {label ?? `Download ${analystName}'s Card`}
             <span className="text-signal-deep">↓</span>
           </>
         )}

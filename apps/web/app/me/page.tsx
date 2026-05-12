@@ -49,6 +49,11 @@ interface AnalystEntry {
   strategy: Strategy;
 }
 
+interface SubBias {
+  aa: Address;
+  bias: 'LONG' | 'SHORT' | 'NEUTRAL' | null;
+}
+
 interface AnalystStats {
   total: number;
   wins: number;
@@ -136,6 +141,56 @@ export default function MePage() {
     }
   }, [subscriptions.length, primaryIndex]);
 
+  // Derive a quick bias for each subscription for the consensus strip.
+  // Uses a flat synthetic snapshot (entryUsd=outcomeUsd means flat → NEUTRAL tendency)
+  // so this only tells strategy-based bias, not price-based. Good enough for the strip.
+  const [subBiases, setSubBiases] = useState<SubBias[]>([]);
+  useEffect(() => {
+    if (subscriptions.length === 0) { setSubBiases([]); return; }
+    let cancelled = false;
+    (async () => {
+      const biases: SubBias[] = await Promise.all(
+        subscriptions.map(async (s) => {
+          try {
+            // Read only the latest attestation bps to get a directional hint
+            const [total] = (await publicClient.readContract({
+              address: SIBYL_CONTRACTS.attestations,
+              abi: SIBYL_ATTESTATIONS_ABI,
+              functionName: 'analystSummary',
+              args: [s.aa],
+            })) as [bigint, bigint, bigint, bigint, bigint];
+            const totalN = Number(total);
+            if (totalN === 0) return { aa: s.aa, bias: null };
+            const id = (await publicClient.readContract({
+              address: SIBYL_CONTRACTS.attestations,
+              abi: SIBYL_ATTESTATIONS_ABI,
+              functionName: 'attestationsByAnalyst',
+              args: [s.aa, BigInt(totalN - 1)],
+            })) as `0x${string}`;
+            const attest = (await publicClient.readContract({
+              address: SIBYL_CONTRACTS.attestations,
+              abi: SIBYL_ATTESTATIONS_ABI,
+              functionName: 'getAttestation',
+              args: [id],
+            })) as any;
+            const synthMove = Number(attest.realizedBps) / 10000;
+            const entryUsd = 100000;
+            const p = derivePersonality(s.aa, s.strategy, {
+              entryUsd,
+              outcomeUsd: entryUsd * (1 + synthMove),
+              publishTime: Number(attest.timestamp),
+            });
+            return { aa: s.aa, bias: p.bias };
+          } catch {
+            return { aa: s.aa, bias: null };
+          }
+        })
+      );
+      if (!cancelled) setSubBiases(biases);
+    })();
+    return () => { cancelled = true; };
+  }, [subscriptions.length]);
+
   return (
     <main className="min-h-screen bg-paper">
       <div className="max-w-[1100px] mx-auto px-6 md:px-12 py-12 md:py-16">
@@ -181,32 +236,54 @@ export default function MePage() {
         {isConnected && primary && (
           <>
             {/* ─── Switcher tabs ────────── */}
-            {subscriptions.length > 1 && (
-              <div className="mb-8">
-                <div className="label-caps mb-3">switch analyst</div>
-                <div className="flex flex-wrap gap-2">
-                  {subscriptions.map((s, i) => (
-                    <button
-                      key={s.aa}
-                      type="button"
-                      onClick={() => setPrimaryIndex(i)}
-                      className={`px-4 py-2 rounded-sm border text-sm font-medium transition-colors ${
-                        i === primaryIndex
-                          ? 'border-ink bg-ink text-paper'
-                          : 'border-rule bg-paper-elevated text-ink hover:border-ink-secondary'
-                      }`}
-                    >
-                      {s.name}
-                      <span className={`ml-2 text-xs font-mono ${
-                        i === primaryIndex ? 'text-paper/70' : 'text-ink-muted'
-                      }`}>
-                        · {formatTimeRemaining(s.timeLeft)}
-                      </span>
-                    </button>
-                  ))}
+            {subscriptions.length > 1 && (() => {
+              const longCount  = subBiases.filter((b) => b.bias === 'LONG').length;
+              const shortCount = subBiases.filter((b) => b.bias === 'SHORT').length;
+              const neutCount  = subBiases.filter((b) => b.bias === 'NEUTRAL').length;
+              return (
+                <div className="mb-8">
+                  <div className="label-caps mb-3">your analysts</div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {subscriptions.map((s, i) => (
+                      <button
+                        key={s.aa}
+                        type="button"
+                        onClick={() => setPrimaryIndex(i)}
+                        className={`px-4 py-2 rounded-sm border text-sm font-medium transition-colors ${
+                          i === primaryIndex
+                            ? 'border-ink bg-ink text-paper'
+                            : 'border-rule bg-paper-elevated text-ink hover:border-ink-secondary'
+                        }`}
+                      >
+                        {s.name}
+                        <span className={`ml-2 text-xs font-mono ${
+                          i === primaryIndex ? 'text-paper/70' : 'text-ink-muted'
+                        }`}>
+                          · {formatTimeRemaining(s.timeLeft)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {subBiases.some((b) => b.bias !== null) && (
+                    <div className="mb-3 font-mono text-sm text-ink-muted">
+                      Your analysts:{' '}
+                      <span className="text-signal-deep">{longCount} LONG</span>
+                      {' · '}
+                      <span className="text-warn-deep">{shortCount} SHORT</span>
+                      {' · '}
+                      <span>{neutCount} NEUTRAL</span>
+                    </div>
+                  )}
+
+                  <p className="text-sm text-ink-muted leading-relaxed max-w-xl">
+                    Analysts can disagree because each one uses a different strategy lens.
+                    Chasers follow momentum, Reverters fade sharp moves, Bears look for downside risk.
+                    Same market, different strategy.
+                  </p>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ─── Primary card ────────── */}
             <PrimaryAnalystCard
@@ -399,8 +476,16 @@ function PrimaryAnalystCard({
             <p className="text-sm md:text-base text-ink-secondary italic leading-relaxed">
               "{personality.reasoning}"
             </p>
-            <div className="mt-3 pt-3 border-t border-rule-subtle text-xs text-ink-muted">
-              Next evaluation: every 4 hours.
+            <div className="mt-3 pt-3 border-t border-rule-subtle text-xs text-ink-muted space-y-1">
+              {stats.recentAttestations[0]?.timestamp && (
+                <div>
+                  Last evaluated:{' '}
+                  {new Date(stats.recentAttestations[0].timestamp * 1000).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}
+                </div>
+              )}
+              <div>Signals are evaluated every 4 hours.</div>
             </div>
           </div>
         )}
@@ -447,6 +532,15 @@ function PrimaryAnalystCard({
         {/* Actions */}
         <div className="mt-6 pt-5 border-t border-rule-subtle flex flex-col md:flex-row md:items-center gap-3">
           <ExportCardButton analyst={analyst} analystName={name} variant="block" />
+          {/* "Open card" secondary action */}
+          <a
+            href={`/api/reputation-card?aa=${analyst}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-rule rounded-sm bg-paper-elevated text-ink hover:border-ink hover:text-signal-deep transition-colors"
+          >
+            Open card ↗
+          </a>
           <SubscribeButton
             analyst={analyst}
             analystName={name}

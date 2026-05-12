@@ -144,7 +144,7 @@ export function formatCostUsdt(wei: bigint): string {
 export function formatTimeRemaining(seconds: bigint | number): string {
   const s = Number(seconds);
   if (s <= 0) return 'expired';
-  const days = Math.floor(s / 86400);
+  const days = Math.ceil(s / 86400);
   if (days >= 1) return `${days}d remaining`;
   const hours = Math.floor(s / 3600);
   if (hours >= 1) return `${hours}h remaining`;

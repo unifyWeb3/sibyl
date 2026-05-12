@@ -88,7 +88,7 @@ export function SubscribeButton({
     abi: SIBYL_SUBSCRIPTIONS_ABI,
     functionName: 'timeRemaining',
     args: address ? [address, analyst] : undefined,
-    query: { enabled: !!address && !!isSubscribed, refetchInterval: 30000 },
+    query: { enabled: !!address, refetchInterval: 30000 },
   });
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -237,7 +237,7 @@ export function SubscribeButton({
   return (
     <>
       <button type="button" onClick={handleClick} className={buttonClasses}>
-        Subscribe · 0.5 USDT
+        Subscribe · {formatCostUsdt(quoteCostDays(30))}
         {variant === 'block' && (
           <span className="text-signal group-hover:translate-x-0.5 transition-transform">→</span>
         )}
@@ -418,12 +418,18 @@ export function SubscribeButton({
                 </div>
                 <div className="space-y-2 text-sm text-ink-secondary mb-6">
                   <div>You now see: bias, confidence, reasoning, history, exportable card.</div>
-                  <div>Next signal cycle: every 4 hours.</div>
+                  <div>Signals are evaluated every 4 hours.</div>
                 </div>
+                <a
+                  href="/me"
+                  className="block w-full text-center bg-signal-deep text-paper px-5 py-3 rounded-sm font-medium hover:bg-signal-deep/90 transition-colors mb-3"
+                >
+                  View My Signals →
+                </a>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors"
+                  className="w-full bg-paper border border-rule text-ink px-5 py-3 rounded-sm font-medium hover:bg-paper-elevated transition-colors"
                 >
                   Done
                 </button>
