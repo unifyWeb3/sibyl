@@ -1,22 +1,36 @@
 'use client';
 
 /**
- * WalletDropdown — opens when user clicks the connected ConnectButton.
+ * WalletDropdown — Day 14c Portal architecture.
  *
- * Contents:
- *   - Full address (with truncation for the visible chip)
- *   - Copy address (with "copied" feedback)
- *   - Current network indicator (green dot if Kite, amber if wrong)
- *   - Switch network button (only when wrong)
- *   - Disconnect button
- *   - Faucet helper link
+ * THE BUG:
+ *   Previous version used `position: absolute` inside the trigger's parent.
+ *   When that parent (the hero <section>) has `overflow: hidden`, the
+ *   dropdown gets clipped — visible in screenshot showing the
+ *   MissionControl panel bleeding through.
  *
- * Editorial Sibyl styling — no rainbow gradients, no glossy chrome.
- * Closes on outside click, Escape, or after any action.
+ * THE FIX:
+ *   Portal the dropdown into document.body. It becomes a sibling of <main>,
+ *   completely outside any ancestor stacking context or overflow clip.
+ *
+ *   Position is calculated from the trigger button's getBoundingClientRect().
+ *   The dropdown uses `position: fixed` (viewport coords), which means:
+ *   - No ancestor can clip it
+ *   - It tracks the trigger correctly on scroll (we reposition on scroll/resize)
+ *   - z-index needs no escalation games — it's at body level
+ *
+ * INTERACTION:
+ *   - Opens instantly (no animation jitter)
+ *   - Closes on outside click
+ *   - Closes on Escape
+ *   - Closes after Disconnect/Switch action
+ *   - Inside clicks don't bubble to outside-click handler
+ *   - Repositions on viewport resize or page scroll
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { useAccount, useChainId, useDisconnect, useSwitchChain } from 'wagmi';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { useAccount, useDisconnect, useSwitchChain } from 'wagmi';
 import {
   KITE_TESTNET_CHAIN_ID,
   KITE_TESTNET_NAME,
@@ -25,30 +39,66 @@ import {
 } from '@/lib/chains';
 
 interface WalletDropdownProps {
+  triggerRef: RefObject<HTMLElement>;
   onClose: () => void;
+}
+
+interface Position {
+  top: number;
+  right: number;
 }
 
 function truncate(addr: string, len = 6): string {
   return `${addr.slice(0, len + 2)}…${addr.slice(-4)}`;
 }
 
-export function WalletDropdown({ onClose }: WalletDropdownProps) {
-  const { address } = useAccount();
-  const chainId = useChainId();
+export function WalletDropdown({ triggerRef, onClose }: WalletDropdownProps) {
+  const { address, chain } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
 
-  const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [position, setPosition] = useState<Position | null>(null);
 
-  const isWrongNetwork = chainId !== KITE_TESTNET_CHAIN_ID;
+  const isWrongNetwork = chain?.id !== KITE_TESTNET_CHAIN_ID;
 
-  // Click outside + Escape to close
+  // Mount detector — Portal can only render after client-side mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Position the dropdown relative to the trigger. useLayoutEffect runs
+  // synchronously after DOM mutations so the dropdown appears at the
+  // correct location on the first paint — no jump.
+  useLayoutEffect(() => {
+    function reposition() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 8, // 8px gap below trigger
+        right: window.innerWidth - rect.right,
+      });
+    }
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true); // capture-phase: catches scrolls in any ancestor
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [triggerRef]);
+
+  // Click outside + Escape to close. Click *inside* dropdown OR on trigger
+  // doesn't close (the trigger handles its own toggle).
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (dropdownRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      onClose();
     }
     function handleEsc(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -59,7 +109,7 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
       document.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleEsc);
     };
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   async function handleCopy() {
     if (!address) return;
@@ -68,16 +118,14 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard API blocked in some environments — silent
+      // clipboard API blocked in some embedded contexts — silent
     }
   }
 
   function handleSwitch() {
     switchChain(
       { chainId: KITE_TESTNET_CHAIN_ID },
-      {
-        onSuccess: () => onClose(),
-      }
+      { onSuccess: () => onClose() }
     );
   }
 
@@ -86,16 +134,22 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
     onClose();
   }
 
-  if (!address) return null;
+  if (!mounted || !address || !position) return null;
 
-  return (
+  const content = (
     <div
-      ref={ref}
-      className="absolute top-full right-0 mt-2 w-72 bg-paper border border-ink rounded-sm shadow-card-hover z-50"
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        top: position.top,
+        right: position.right,
+        zIndex: 9999,
+      }}
+      className="w-72 bg-paper border border-ink rounded-sm shadow-card-hover"
       role="dialog"
       aria-label="Wallet"
     >
-      {/* Address row */}
+      {/* Address */}
       <div className="px-4 py-3 border-b border-rule-subtle">
         <div className="label-caps mb-1">your wallet</div>
         <div className="flex items-center gap-2 font-mono text-sm text-ink">
@@ -103,14 +157,16 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
         </div>
       </div>
 
-      {/* Network row */}
+      {/* Network */}
       <div className="px-4 py-3 border-b border-rule-subtle">
         <div className="label-caps mb-1">network</div>
         {isWrongNetwork ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-warn-deep" />
-              <span className="text-warn-deep">Wrong network · chain {chainId}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-warn-deep flex-shrink-0" />
+              <span className="text-warn-deep">
+                Wrong network · chain {chain?.id ?? '?'}
+              </span>
             </div>
             <button
               type="button"
@@ -123,7 +179,7 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse-soft" />
+            <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse-soft flex-shrink-0" />
             <span className="text-ink">Connected to {KITE_TESTNET_NAME}</span>
           </div>
         )}
@@ -137,7 +193,7 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
           className="w-full flex items-center justify-between px-3 py-2 text-sm text-ink border border-rule rounded-sm bg-paper-elevated hover:border-ink-secondary transition-colors"
         >
           <span>{copied ? 'Copied ✓' : 'Copy address'}</span>
-          <span className="text-ink-muted text-xs">⌘C</span>
+          <span className="text-ink-muted text-xs font-mono">{copied ? '' : '⧉'}</span>
         </button>
         <a
           href={`${KITE_EXPLORER_URL}/address/${address}`}
@@ -157,7 +213,7 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
         </button>
       </div>
 
-      {/* Faucet helper */}
+      {/* Faucet */}
       <div className="px-4 py-3">
         <div className="label-caps mb-1">need test funds?</div>
         <a
@@ -171,4 +227,6 @@ export function WalletDropdown({ onClose }: WalletDropdownProps) {
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }
