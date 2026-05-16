@@ -348,3 +348,121 @@ export function formatRelativeTime(timestamp: number): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
+/**
+ * Day 14 ADDITIVE helper for kite.ts.
+ *
+ * APPEND to your existing apps/web/lib/kite.ts. Do NOT replace the file.
+ * Copy the export below to the bottom of kite.ts. Same imports already exist
+ * there (publicClient, SIBYL_CONTRACTS, SIBYL_ATTESTATIONS_ABI).
+ */
+
+// ─── Append these exports to apps/web/lib/kite.ts ──────────────────────────
+
+/**
+ * Read the most recent attestation timestamp on chain (any analyst).
+ * Returns 0 if no attestations exist yet. Used by LiveStatusBanner.
+ */
+export async function getLatestAttestationTimestamp(): Promise<number> {
+  try {
+    // Pull the leader (any analyst with history works — we just need the
+    // most recent on-chain attestation timestamp across the marketplace).
+    const board = await loadLeaderboard();
+    const candidates = board.filter((e) => e.hasHistory).slice(0, 3);
+ 
+    if (candidates.length === 0) return 0;
+ 
+    // For each candidate, fetch their latest attestation timestamp and take
+    // the max. Three reads max — cheap.
+    let latest = 0;
+    for (const a of candidates) {
+      try {
+        const summary = (await publicClient.readContract({
+          address: SIBYL_CONTRACTS.attestations,
+          abi: SIBYL_ATTESTATIONS_ABI,
+          functionName: 'analystSummary',
+          args: [a.aa],
+        })) as [bigint, bigint, bigint, bigint, bigint];
+ 
+        const total = Number(summary[0]);
+        if (total === 0) continue;
+ 
+        const id = (await publicClient.readContract({
+          address: SIBYL_CONTRACTS.attestations,
+          abi: SIBYL_ATTESTATIONS_ABI,
+          functionName: 'attestationsByAnalyst',
+          args: [a.aa, BigInt(total - 1)],
+        })) as `0x${string}`;
+ 
+        const att = (await publicClient.readContract({
+          address: SIBYL_CONTRACTS.attestations,
+          abi: SIBYL_ATTESTATIONS_ABI,
+          functionName: 'getAttestation',
+          args: [id],
+        })) as any;
+ 
+        const ts = Number(att?.timestamp ?? 0);
+        if (ts > latest) latest = ts;
+      } catch {
+        continue;
+      }
+    }
+ 
+    return latest;
+  } catch {
+    return 0;
+  }
+}
+ 
+
+/**
+ * Read the latest attestation's realized bps + direction so the public
+ * personality engine has a snapshot to work from. We don't have entry/outcome
+ * USD on chain (they're hashed via priceUpdateHash), so the bps gives us a
+ * directional proxy — same trick used on /me, deterministic and consistent.
+ */
+export async function getLatestSnapshotForAnalyst(analyst: `0x${string}`): Promise<{
+  entryUsd: number;
+  outcomeUsd: number;
+  publishTime: number;
+} | null> {
+  try {
+    const summary = (await publicClient.readContract({
+      address: SIBYL_CONTRACTS.attestations,
+      abi: SIBYL_ATTESTATIONS_ABI,
+      functionName: 'analystSummary',
+      args: [analyst],
+    })) as [bigint, bigint, bigint, bigint, bigint];
+
+    const total = Number(summary[0]);
+    if (total === 0) return null;
+
+    const id = (await publicClient.readContract({
+      address: SIBYL_CONTRACTS.attestations,
+      abi: SIBYL_ATTESTATIONS_ABI,
+      functionName: 'attestationsByAnalyst',
+      args: [analyst, BigInt(total - 1)],
+    })) as `0x${string}`;
+
+    const a = (await publicClient.readContract({
+      address: SIBYL_CONTRACTS.attestations,
+      abi: SIBYL_ATTESTATIONS_ABI,
+      functionName: 'getAttestation',
+      args: [id],
+    })) as any;
+
+    // Reverse-engineer a snapshot consistent with the realized bps direction.
+    // Magnitude only matters for confidence — direction is what drives bias.
+    const bps = Number(a.realizedBps);
+    const synthMove = bps / 10000;
+    const entryUsd = 100000;
+    const outcomeUsd = entryUsd * (1 + synthMove);
+
+    return {
+      entryUsd,
+      outcomeUsd,
+      publishTime: Number(a.timestamp),
+    };
+  } catch {
+    return null;
+  }
+}

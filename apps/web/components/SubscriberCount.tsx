@@ -1,14 +1,10 @@
 'use client';
 
 /**
- * SubscriberCount — tiny client read showing total subscribers for an analyst.
+ * SubscriberCount — silently renders nothing when count is 0.
  *
- * Renders silently as nothing while loading or if zero. When > 0, shows
- * "· N subscriber(s)" inline next to the analyst's address on the leaderboard.
- *
- * Note: totalSubscribersByAnalyst counts EVERY subscribe call, not unique
- * subscribers. Renewals stack into the count. For the demo this still reads
- * as marketplace activity which is the right signal.
+ * Day 14: avoid signaling "nobody uses this" — better to show nothing
+ * until at least one subscriber exists.
  */
 
 import { useReadContract } from 'wagmi';

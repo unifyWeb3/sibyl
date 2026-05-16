@@ -1,19 +1,21 @@
 'use client';
 
 /**
- * Leaderboard — Day 13 polish.
+ * Leaderboard — Day 14 polish.
  *
- * Changes from Day 11:
- *   - Pass strategy + hit rate + cumulative + total to SubscribeButton so the
- *     subscribe modal shows real analyst stats in its summary block.
- *   - No structural changes: pagination, mobile stacking, SubscriberCount all
- *     preserved.
+ * Adds AnalystBiasLine under each analyst's name to surface the alive
+ * feel publicly (currently hidden behind /me paywall). This is the
+ * single biggest change for "make the first 30 seconds undeniable."
+ *
+ * Preserves: pagination, mobile stacking, SubscriberCount, props to SubscribeButton.
  */
 
 import { useState } from 'react';
 import { type AnalystEntry, EXPLORER, formatBps, truncateAddress } from '@/lib/kite';
 import { SubscribeButton } from './SubscribeButton';
 import { SubscriberCount } from './SubscriberCount';
+import { AnalystBiasLine } from './AnalystBiasLine';
+import type { Strategy } from '@/lib/personality-client';
 
 interface LeaderboardProps {
   entries: AnalystEntry[];
@@ -72,11 +74,10 @@ export function Leaderboard({ entries }: LeaderboardProps) {
     <div className="border border-rule-subtle rounded-sm overflow-hidden bg-paper-elevated shadow-card">
       <div className="hidden md:grid grid-cols-12 gap-3 px-5 py-3.5 bg-paper-subtle border-b border-rule-subtle label-caps">
         <div className="col-span-1">#</div>
-        <div className="col-span-4">analyst</div>
+        <div className="col-span-5">analyst · current bias</div>
         <div className="col-span-2 text-right">hit rate</div>
-        <div className="col-span-2 text-right">cumulative</div>
-        <div className="col-span-1 text-right">attests</div>
-        <div className="col-span-2 text-right">status</div>
+        <div className="col-span-1 text-right">cumulative</div>
+        <div className="col-span-3 text-right">action</div>
       </div>
 
       {visible.map((e) => {
@@ -102,8 +103,8 @@ export function Leaderboard({ entries }: LeaderboardProps) {
 
             {/* Mobile */}
             <div className="md:hidden">
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono tabular text-xs text-ink-muted">
                       #{String(e.rank).padStart(3, '0')}
@@ -126,6 +127,12 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                     </span>
                     <SubscriberCount analyst={e.aa} />
                   </div>
+                  {/* THE EMOTIONAL LAYER */}
+                  <AnalystBiasLine
+                    analyst={e.aa}
+                    strategy={e.strategy as Strategy}
+                    hasHistory={e.hasHistory}
+                  />
                 </div>
                 <div className="text-right flex-shrink-0">
                   {e.hasHistory ? (
@@ -180,11 +187,11 @@ export function Leaderboard({ entries }: LeaderboardProps) {
 
             {/* Desktop */}
             <div className="hidden md:contents">
-              <div className="col-span-1 font-mono tabular text-sm text-ink-muted">
+              <div className="col-span-1 font-mono tabular text-sm text-ink-muted self-start mt-1">
                 {String(e.rank).padStart(3, '0')}
               </div>
 
-              <div className="col-span-4">
+              <div className="col-span-5">
                 <div className="flex items-center gap-2">
                   <div className="font-display italic text-xl md:text-2xl text-ink leading-tight">
                     {e.name}
@@ -204,9 +211,15 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                   </span>
                   <SubscriberCount analyst={e.aa} />
                 </div>
+                {/* THE EMOTIONAL LAYER */}
+                <AnalystBiasLine
+                  analyst={e.aa}
+                  strategy={e.strategy as Strategy}
+                  hasHistory={e.hasHistory}
+                />
               </div>
 
-              <div className="col-span-2 text-right">
+              <div className="col-span-2 text-right self-start mt-1">
                 {e.hasHistory ? (
                   <div className="font-mono tabular text-lg text-ink">
                     {(e.hitRate * 100).toFixed(1)}
@@ -217,26 +230,17 @@ export function Leaderboard({ entries }: LeaderboardProps) {
                 )}
               </div>
 
-              <div className="col-span-2 text-right">
+              <div className="col-span-1 text-right self-start mt-1">
                 {e.hasHistory ? (
-                  <div className={`font-mono tabular text-lg ${cumColor}`}>
+                  <div className={`font-mono tabular text-base ${cumColor}`}>
                     {formatBps(e.cumulativeBps)}
                   </div>
                 ) : (
-                  <div className="font-mono text-lg text-ink-tertiary">—</div>
+                  <div className="font-mono text-base text-ink-tertiary">—</div>
                 )}
               </div>
 
-              <div className="col-span-1 text-right font-mono tabular text-sm text-ink-muted">
-                {e.total}
-              </div>
-
-              <div className="col-span-2 text-right flex items-center justify-end gap-2">
-                {e.hasHistory ? (
-                  <span className="label-caps !text-signal-deep">live ↗</span>
-                ) : (
-                  <span className="label-caps !text-ink-tertiary">just joined</span>
-                )}
+              <div className="col-span-3 text-right flex items-center justify-end gap-2 self-start mt-0.5">
                 <span
                   onClick={(ev) => {
                     ev.preventDefault();
@@ -278,9 +282,9 @@ export function Leaderboard({ entries }: LeaderboardProps) {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 px-5 py-3 bg-paper-subtle border-t border-rule-subtle label-caps">
           <div className="md:col-span-6 flex items-center gap-2">
             <span className="w-1 h-1 bg-signal-deep rounded-full animate-pulse-soft" />
-            {entries.length} analyst{entries.length === 1 ? '' : 's'} · ranked by cumulative bps
+            {entries.length} analysts · ranked by cumulative bps · settled by Pyth
           </div>
-          <div className="md:col-span-6 md:text-right">re-reads every 10s</div>
+          <div className="md:col-span-6 md:text-right">autonomous cron every 4h</div>
         </div>
       )}
     </div>

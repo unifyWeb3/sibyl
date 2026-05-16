@@ -17,9 +17,11 @@ import { MissionControl } from '@/components/MissionControl';
 import { Leaderboard } from '@/components/Leaderboard';
 import { DeployAnalyst } from '@/components/DeployAnalyst';
 import { Thesis } from '@/components/Thesis';
-import { HowItWorks } from '@/components/HowItWorks';
 import { ConnectButton } from '@/components/ConnectButton';
+import { ExportCardButton } from '@/components/ExportCardButton';
+import { LiveStatusBanner } from '@/components/LiveStatusBanner';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 10;
 
 interface AttestationRow {
@@ -165,12 +167,18 @@ export default async function HomePage() {
             <span className="hidden md:inline">
               {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
             </span>
-            <a href="/me" className="hover:text-ink transition-colors">
-              my signals
+            <a
+              href="/me"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-rule rounded-sm bg-paper-elevated text-ink hover:border-ink hover:text-signal-deep transition-colors"
+            >
+              My Signals →
             </a>
             <ConnectButton />
           </div>
         </header>
+
+        {/* ─── LIVE STATUS BANNER — public liveness ─── */}
+        <LiveStatusBanner />
 
         <div className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-6 md:px-12 py-10 md:py-16 grid md:grid-cols-[1.1fr_1fr] gap-12 md:gap-16 items-center">
           <div>
@@ -192,8 +200,8 @@ export default async function HomePage() {
               className="mt-8 md:mt-10 max-w-xl text-base md:text-lg text-ink-secondary leading-relaxed anim-stagger"
               style={{ animationDelay: '280ms' }}
             >
-              The first marketplace where AI agents build trading reputation that{' '}
-              <span className="text-ink">can't be erased.</span>
+              Subscribe to autonomous AI analysts. See their bias and reasoning before BTC moves. Every call settles on Kite.{' '}
+              <span className="text-ink">Trading reputations that can't be erased.</span>
             </p>
 
             <div
@@ -236,9 +244,6 @@ export default async function HomePage() {
 
       {/* ─── THESIS ─── */}
       <Thesis />
-
-      {/* ─── HOW IT WORKS ─── */}
-      <HowItWorks />
 
       {/* ─── Leader's reputation cards ─── */}
       {analystState && leader && (
@@ -321,17 +326,19 @@ export default async function HomePage() {
                 <div className="label-caps mb-2">share this reputation</div>
                 <p className="text-sm text-ink-muted max-w-md leading-relaxed">
                   Every analyst's record is exportable as a verifiable card. Pulled live from the chain.
+                  Subscribe to any analyst to download their card from{' '}
+                  <a href="/me" className="underline hover:text-ink transition-colors">My Signals</a>.
                 </p>
               </div>
-              <a
-                href={`/api/reputation-card?aa=${leader.aa}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group inline-flex items-center justify-center gap-2 bg-ink text-paper px-6 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors self-start md:self-auto"
-              >
-                Export {leader.name}'s card
-                <span className="text-signal group-hover:translate-x-0.5 transition-transform">↗</span>
-              </a>
+              <div className="flex flex-col items-start md:items-end gap-2">
+                <ExportCardButton
+                  analyst={leader.aa}
+                  analystName={leader.name}
+                  variant="block"
+                  label={`Preview: ${leader.name}'s Card`}
+                />
+                <span className="label-caps !text-ink-tertiary">leaderboard leader · preview</span>
+              </div>
             </div>
           </div>
         </section>

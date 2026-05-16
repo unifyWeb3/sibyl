@@ -1,13 +1,17 @@
 /**
- * Sibyl autonomous attestation — manual nonce management.
+ * Sibyl autonomous attestation — Day 14 fix.
  *
- * Day 13a v2 fix:
- *   - Kite's RPC lags propagation. Ethers' built-in nonce cache desyncs
- *     after a few sequential sends → 'nonce has already been used' on
- *     transactions 9-10. Manual nonce management fixes this:
- *     fetch once, increment per success, re-fetch on revert.
- *   - Use sendTransaction with explicit nonce field (not contract.method calls
- *     which silently use the provider's cached nonce).
+ * ROOT CAUSE OF 3-DAY OUTAGE (cron #70 + all subsequent failures):
+ *   `import { derivePersonality } from '../services/personality'`
+ *   tsx local: resolves to services/personality/index.ts ✓
+ *   tsx GitHub runner (strict ESM): ERR_MODULE_NOT_FOUND ✗
+ *
+ * FIX: explicit '../services/personality/index.ts' path. One character.
+ *
+ * Everything else preserved from Day 13a-fix:
+ *   - Manual nonce management (fixes Kite RPC propagation desync)
+ *   - Per-analyst try/catch (one failure doesn't kill the run)
+ *   - Personality engine drives bias/confidence/reasoning per analyst
  */
 
 import { config } from 'dotenv';
@@ -24,14 +28,12 @@ import {
 import {
   derivePersonality,
   type Strategy,
-} from '../services/personality';
+} from '../services/personality/index.ts';
 
 const RPC_URL = process.env.KITE_RPC_URL ?? 'https://rpc-testnet.gokite.ai';
-// Prefer ATTESTER_PRIVATE_KEY (cron/attestation operator wallet).
-// Falls back to legacy HACKATHON_PRIVATE_KEY so existing deployments aren't broken.
-const PRIVATE_KEY = process.env.ATTESTER_PRIVATE_KEY ?? process.env.HACKATHON_PRIVATE_KEY;
+const PRIVATE_KEY = process.env.ATTESTER_PRIVATE_KEY ?? process.env.HACKATHON_PRIVATE_KEY!;
 if (!PRIVATE_KEY) {
-  console.error('FATAL: ATTESTER_PRIVATE_KEY (or HACKATHON_PRIVATE_KEY) missing');
+  console.error('FATAL: ATTESTER_PRIVATE_KEY or HACKATHON_PRIVATE_KEY missing');
   process.exit(1);
 }
 
@@ -110,14 +112,10 @@ async function main() {
   const traderAa = agents.trader.aaAddress;
 
   const provider = new JsonRpcProvider(RPC_URL);
-  const wallet = new Wallet(PRIVATE_KEY!, provider);
-  console.log(`▸ Posting attestations from operator wallet: ${wallet.address}`);
+  const wallet = new Wallet(PRIVATE_KEY, provider);
   const analystsContract = new Contract(analystsAddr, ANALYSTS_ABI, provider);
-
-  // Encode postAttestation calls manually so we control the nonce
   const attestIface = new Interface(ATTESTATIONS_V2_ABI);
 
-  // Pull both prices once
   console.log('\n▸ Fetching outcome price (now)...');
   const outcome = await fetchLatestPrice('BTC_USD');
   const outcomeT = outcome.price.publishTime;
@@ -139,7 +137,6 @@ async function main() {
   const analysts = (await analystsContract.analystsPaged(0n, 50n)) as readonly any[];
   console.log(`  ${analysts.length} analysts registered`);
 
-  // Fetch starting nonce ONCE — we'll manage it manually from here
   let nonce = await provider.getTransactionCount(wallet.address, 'pending');
   console.log(`  starting nonce: ${nonce}\n`);
 
@@ -180,53 +177,24 @@ async function main() {
       combinedHash,
     ]);
 
-    const txOk = await sendWithRetry(wallet, provider, {
-      to: v2Addr,
-      data,
-      nonce,
-    });
+    const txOk = await sendWithRetry(wallet, { to: v2Addr, data, nonce });
 
     if (txOk.success) {
       console.log(`  ✓ ${txOk.hash!.slice(0, 10)}... (nonce ${nonce})`);
-      results.push({
-        name: a.name,
-        aa: a.aa,
-        status: 'ok',
-        bias,
-        confidence,
-        reasoning,
-        bps,
-        outcome: outcomeLabel,
-        txHash: txOk.hash,
-      });
-      nonce++; // success → bump nonce
+      results.push({ name: a.name, aa: a.aa, status: 'ok', bias, confidence, reasoning, bps, outcome: outcomeLabel, txHash: txOk.hash });
+      nonce++;
     } else {
       console.log(`  ✗ ${txOk.error}`);
       results.push({ name: a.name, aa: a.aa, status: 'fail', error: txOk.error });
 
-      // On nonce desync, refresh from chain and retry the SAME analyst once
       if (txOk.error?.toLowerCase().includes('nonce')) {
         console.log(`  ↻ refreshing nonce from chain...`);
         nonce = await provider.getTransactionCount(wallet.address, 'pending');
-        console.log(`  ↻ retry with nonce ${nonce}`);
-        const retry = await sendWithRetry(wallet, provider, {
-          to: v2Addr,
-          data,
-          nonce,
-        });
+        const retry = await sendWithRetry(wallet, { to: v2Addr, data, nonce });
         if (retry.success) {
           console.log(`  ✓ ${retry.hash!.slice(0, 10)}... (nonce ${nonce}) [retried]`);
-          // Replace fail with ok
           results[results.length - 1] = {
-            name: a.name,
-            aa: a.aa,
-            status: 'ok',
-            bias,
-            confidence,
-            reasoning,
-            bps,
-            outcome: outcomeLabel,
-            txHash: retry.hash,
+            name: a.name, aa: a.aa, status: 'ok', bias, confidence, reasoning, bps, outcome: outcomeLabel, txHash: retry.hash,
           };
           nonce++;
         } else {
@@ -235,7 +203,6 @@ async function main() {
       }
     }
 
-    // Small delay between writes — Kite RPC propagation
     await sleep(800);
   }
 
@@ -273,15 +240,10 @@ interface SendResult { success: boolean; hash?: string; error?: string; }
 
 async function sendWithRetry(
   wallet: Wallet,
-  provider: JsonRpcProvider,
   txReq: { to: string; data: string; nonce: number }
 ): Promise<SendResult> {
   try {
-    const tx = await wallet.sendTransaction({
-      to: txReq.to,
-      data: txReq.data,
-      nonce: txReq.nonce,
-    });
+    const tx = await wallet.sendTransaction({ to: txReq.to, data: txReq.data, nonce: txReq.nonce });
     await tx.wait(1);
     return { success: true, hash: tx.hash };
   } catch (err: any) {

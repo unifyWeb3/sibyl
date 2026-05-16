@@ -1,22 +1,20 @@
 'use client';
 
 /**
- * SubscribeButton — Day 13 redesign.
+ * SubscribeButton — Day 14 polish.
  *
- * Modal flow:
- *   1. Analyst summary card (name, strategy, hit rate, cumulative bps, sub count)
- *   2. Duration selector (7d / 14d / 30d* / 60d, * = default)
- *   3. Summary block: total cost · expires on <date> · what unlocks
- *   4. Single CTA "Subscribe · X.XXXX USDT"
+ * Reduce cognitive load: 30d preselected, durations hidden behind "change
+ * duration" link. First-time users see ONE button: "Subscribe · 0.5 USDT for
+ * 30 days." Decision count drops from 5 (analyst + 4 duration buttons + cta)
+ * to 2 (review + cta). Power users can still pick 7d/14d/60d.
  *
- * Wallet flow (after CTA):
- *   - If allowance < cost → approve(cost), then auto-fire subscribe(analyst, days)
- *   - If allowance >= cost → fire subscribe directly
- *   - Modal blocks closing while in-flight
- *   - On success → green confirmation with "View signals" + "Done"
- *
- * State freshness: refetchIsSubscribed on success so the leaderboard's
- * "subscribed · 7d remaining" badge appears immediately.
+ * All other behaviors preserved from Day 13b:
+ *   - Analyst summary at top
+ *   - Summary block (cost + expiry + your USDT)
+ *   - You unlock list
+ *   - Auto-fire subscribe after approve confirms
+ *   - Modal blocks closing while in flight
+ *   - refetchIsSubscribed on success
  */
 
 import { useState, useEffect } from 'react';
@@ -71,10 +69,10 @@ export function SubscribeButton({
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [selectedDays, setSelectedDays] = useState<number>(30);
+  const [showDurationPicker, setShowDurationPicker] = useState(false);
 
   const cost = quoteCostDays(selectedDays);
 
-  // ─── Reads ──
   const { data: isSubscribed, refetch: refetchIsSubscribed } = useReadContract({
     address: SIBYL_SUBSCRIPTIONS_ADDRESS,
     abi: SIBYL_SUBSCRIPTIONS_ABI,
@@ -88,7 +86,7 @@ export function SubscribeButton({
     abi: SIBYL_SUBSCRIPTIONS_ABI,
     functionName: 'timeRemaining',
     args: address ? [address, analyst] : undefined,
-    query: { enabled: !!address, refetchInterval: 30000 },
+    query: { enabled: !!address && !!isSubscribed, refetchInterval: 30000 },
   });
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -107,7 +105,6 @@ export function SubscribeButton({
     query: { enabled: !!address && showModal },
   });
 
-  // ─── Writes ──
   const { writeContract, data: txHash, reset: resetWrite } = useWriteContract();
   const { isLoading: isTxConfirming, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
@@ -116,7 +113,6 @@ export function SubscribeButton({
   const needsApproval = (allowance ?? 0n) < cost;
   const hasInsufficientBalance = (usdtBalance ?? 0n) < cost;
 
-  // Auto-advance: approve confirms → fire subscribe; subscribe confirms → success
   useEffect(() => {
     if (!isTxSuccess) return;
     if (phase === 'approve-pending') {
@@ -157,6 +153,7 @@ export function SubscribeButton({
     setPhase('idle');
     setError(null);
     setSelectedDays(30);
+    setShowDurationPicker(false);
     resetWrite();
   }
 
@@ -199,7 +196,6 @@ export function SubscribeButton({
     }
   }
 
-  // ─── Render: button ──
   const buttonClasses =
     variant === 'block'
       ? 'group inline-flex items-center justify-center gap-2 bg-ink text-paper px-6 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors'
@@ -237,7 +233,7 @@ export function SubscribeButton({
   return (
     <>
       <button type="button" onClick={handleClick} className={buttonClasses}>
-        Subscribe · {formatCostUsdt(quoteCostDays(30))}
+        Subscribe · 0.5 USDT
         {variant === 'block' && (
           <span className="text-signal group-hover:translate-x-0.5 transition-transform">→</span>
         )}
@@ -265,7 +261,6 @@ export function SubscribeButton({
 
             {phase !== 'success' && (
               <>
-                {/* ─── 1. Analyst summary ────────── */}
                 <div className="mb-6 pb-5 border-b border-rule-subtle">
                   <h3 className="font-display text-2xl md:text-3xl text-ink leading-tight mb-1">
                     {analystName}
@@ -304,39 +299,14 @@ export function SubscribeButton({
                   )}
                 </div>
 
-                {/* ─── 2. Duration selector ────────── */}
-                <div className="mb-6">
-                  <div className="label-caps mb-3">choose duration</div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {DURATION_OPTIONS.map((opt) => {
-                      const optCost = quoteCostDays(opt.days);
-                      const isSelected = selectedDays === opt.days;
-                      return (
-                        <button
-                          key={opt.days}
-                          type="button"
-                          onClick={() => !isInFlight && setSelectedDays(opt.days)}
-                          disabled={isInFlight}
-                          className={`p-3 rounded-sm border transition-colors text-left ${
-                            isSelected
-                              ? 'border-ink bg-ink text-paper'
-                              : 'border-rule bg-paper-elevated text-ink hover:border-ink-secondary'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          <div className="font-display text-lg leading-tight">{opt.days}d</div>
-                          <div className={`font-mono text-[0.65rem] mt-0.5 ${
-                            isSelected ? 'text-paper/70' : 'text-ink-muted'
-                          }`}>
-                            {formatCostUsdt(optCost)}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ─── 3. Summary block ────────── */}
+                {/* Compact duration row — collapsed by default */}
                 <div className="mb-5 p-4 bg-paper-subtle rounded-sm space-y-2 text-sm">
+                  <div className="flex justify-between items-baseline">
+                    <span className="label-caps">duration</span>
+                    <span className="font-mono tabular text-ink font-medium">
+                      {selectedDays} days
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="label-caps">total cost</span>
                     <span className="font-mono tabular text-ink font-medium">
@@ -355,16 +325,53 @@ export function SubscribeButton({
                       {formatUnits(usdtBalance ?? 0n, 18).slice(0, 8)} USDT
                     </span>
                   </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => !isInFlight && setShowDurationPicker(v => !v)}
+                      disabled={isInFlight}
+                      className="text-xs text-signal-deep hover:underline disabled:opacity-50"
+                    >
+                      {showDurationPicker ? '× hide options' : 'change duration →'}
+                    </button>
+                  </div>
+
+                  {showDurationPicker && (
+                    <div className="pt-3 grid grid-cols-4 gap-2">
+                      {DURATION_OPTIONS.map((opt) => {
+                        const optCost = quoteCostDays(opt.days);
+                        const isSelected = selectedDays === opt.days;
+                        return (
+                          <button
+                            key={opt.days}
+                            type="button"
+                            onClick={() => !isInFlight && setSelectedDays(opt.days)}
+                            disabled={isInFlight}
+                            className={`p-2 rounded-sm border transition-colors text-left ${
+                              isSelected
+                                ? 'border-ink bg-ink text-paper'
+                                : 'border-rule bg-paper-elevated text-ink hover:border-ink-secondary'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            <div className="font-display text-base leading-tight">{opt.days}d</div>
+                            <div className={`font-mono text-[0.6rem] mt-0.5 ${
+                              isSelected ? 'text-paper/70' : 'text-ink-muted'
+                            }`}>
+                              {formatCostUsdt(optCost).replace(' USDT', '')}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* What unlocks */}
                 <div className="mb-6 pl-3 border-l border-signal-deep/40">
                   <div className="label-caps !text-signal-deep mb-2">you unlock</div>
                   <ul className="space-y-1 text-sm text-ink-secondary">
-                    <li>· current bias + confidence</li>
-                    <li>· analyst reasoning per signal</li>
-                    <li>· full historical calls</li>
+                    <li>· full bias + reasoning history</li>
                     <li>· exportable reputation card</li>
+                    <li>· access until {formatExpiryDate(expiryTs)}</li>
                   </ul>
                 </div>
 
@@ -418,18 +425,12 @@ export function SubscribeButton({
                 </div>
                 <div className="space-y-2 text-sm text-ink-secondary mb-6">
                   <div>You now see: bias, confidence, reasoning, history, exportable card.</div>
-                  <div>Signals are evaluated every 4 hours.</div>
+                  <div>Next signal cycle: every 4 hours.</div>
                 </div>
-                <a
-                  href="/me"
-                  className="block w-full text-center bg-signal-deep text-paper px-5 py-3 rounded-sm font-medium hover:bg-signal-deep/90 transition-colors mb-3"
-                >
-                  View My Signals →
-                </a>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="w-full bg-paper border border-rule text-ink px-5 py-3 rounded-sm font-medium hover:bg-paper-elevated transition-colors"
+                  className="w-full bg-ink text-paper px-5 py-3 rounded-sm font-medium hover:bg-ink-secondary transition-colors"
                 >
                   Done
                 </button>
