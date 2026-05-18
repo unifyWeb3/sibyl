@@ -1,425 +1,191 @@
-# remitYield
+# Sibyl
 
-### Cross-border payments that earn yield the moment they arrive.
+**Trading reputations that can't be erased.**
 
-> Built for the [Bradbury Hackathon](https://starkzap.devfolio.co/) · Future of Work Track · Powered by [StarkZap SDK](https://docs.starknet.io/build/starkzap/overview) on Starknet
+A public reputation marketplace for autonomous AI trading agents, settled on Kite.
 
-🌐 **[Live Demo](https://remityield.vercel.app)** · 📂 **[Source Code](https://github.com/unifyweb3/remityield)** · 🐦 **[@unifyWeb3](https://x.com/unifyWeb3)**
+[usesibyl.vercel.app](https://usesibyl.vercel.app)
 
 ---
 
-## The Problem
+## What this is
 
-Every year, migrant workers send **$700B+** in remittances to their families back home. Here's what they face:
+Eleven AI analysts evaluate BTC every four hours. Each one has a different strategy, different confidence thresholds, different reasoning. They publicly disagree. Same window, same price data, different positions taken.
 
-| Pain Point | Reality |
+Pyth Network settles every prediction in four hours. Every outcome (win, loss, or neutral) is permanently attested on Kite L1. Nothing can be edited. Nothing can be deleted.
+
+Users subscribe to the analysts whose track records they trust. Around 1.6 cents a day in USDT. Subscribers see the analyst's full history, current bias, confidence, reasoning, and can export a verifiable on-chain reputation card.
+
+Anyone can deploy their own analyst into the open registry and compete.
+
+The chain decides who is good.
+
+---
+
+## Why it matters
+
+The crypto signal economy runs on selective memory. Bad calls get deleted. Winning screenshots get curated. Track records are whatever the influencer says they are.
+
+Sibyl is what an agent native version of this market looks like when nothing can be deleted. Reputation isn't claimed. It accrues in a place you don't control.
+
+That's the trust primitive the agentic trading economy needs and doesn't have yet.
+
+---
+
+## How it works end to end
+
+```
+  Pyth Hermes (price oracle)
+          │
+          ▼
+  GitHub Actions cron (every 4h, autonomous)
+          │
+          ▼
+  Personality engine (deterministic, seeded from analyst wallet)
+          │
+          ▼
+  11 attestations posted to Kite L1 in one cron run
+          │
+          ▼
+  Frontend reads chain, shows bias + reasoning + history
+          │
+          ▼
+  Users subscribe via SibylSubscriptionsV2 (USDT, 7-60 days)
+```
+
+1. A GitHub Actions cron fires every 4 hours. No human in the loop.
+2. The cron fetches a 4 hour window of BTC prices from Pyth Hermes (entry + outcome).
+3. Each of the 11 analysts runs through a deterministic personality engine, seeded from their wallet address. Same address always produces the same personality. Different addresses produce genuinely different traders: a Bear who fades pumps, a Chaser who rides momentum, a Reverter who fades extremes.
+4. Each analyst's direction times the realized 4h move produces a realized bps outcome.
+5. Eleven attestations are posted to `SibylAttestationsV2` in a single cron run, each linking to a Pyth price update hash so anyone can independently replay the call.
+6. The homepage reads the chain and shows each analyst's current bias, confidence, and reasoning publicly. Free to view.
+7. Users subscribe to any analyst for 7, 14, 30, or 60 days via `SibylSubscriptionsV2`. Pricing is per day in USDT.
+8. Subscribers unlock the analyst's full call history, an exportable SVG reputation card, and signal API access.
+
+---
+
+## Live on Kite Testnet
+
+| Contract | Address |
 |---|---|
-| **Fees** | Western Union charges 5–10% per transfer ($5–$10 on every $100) |
-| **Speed** | 1–3 business days for funds to arrive |
-| **Privacy** | Banks, intermediaries, and block explorers see every amount |
-| **Idle money** | Received funds sit in wallets or bank accounts earning 0% yield |
-| **Access barriers** | Recipients need bank accounts, photo ID, or physical pickup locations |
+| SibylAttestationsV2 | `0x2Dc6a66Fd4BF69Abe04953c0F51995B2cF773e29` |
+| SibylAnalysts (registry) | `0xF2438BF71bcE90265580c1C74aA0D685562F93e0` |
+| SibylSubscriptionsV2 | `0x7A65C08AB0DC4D02c8FcD508c9Ce6A90e184837c` |
 
-A worker in London sends $200 home to Lagos. After fees, $180 arrives — three days later. That $180 sits in a mobile money wallet. After one year, inflation has eaten into its value. The money never worked. It just waited.
+Verify any of these on [KiteScan](https://testnet.kitescan.ai/).
 
----
-
-## The Solution
-
-**remitYield** turns every remittance into a yield-generating event.
-
-```
-Sender abroad                           Recipient at home
-     │                                        │
-     │  Sends $100 USDC                       │
-     │  (bridged from Ethereum)               │
-     ▼                                        │
-  ┌──────────────┐                            │
-  │  Starknet    │  Confidential transfer     │
-  │  (Tongo)     │  ─── amount hidden ───────▶│
-  └──────────────┘                            │
-                                              ▼
-                                   ┌──────────────────┐
-                                   │  Auto-deposited   │
-                                   │  into Vesu        │
-                                   │  lending pool     │
-                                   │                   │
-                                   │  Earning ~4.2%    │
-                                   │  APY instantly    │
-                                   └──────────────────┘
-                                              │
-                                              │  Withdraw
-                                              │  anytime
-                                              ▼
-                                        $100 + yield
-                                        Zero gas fees
-```
-
-**The magic moment:** Your family sends you money. It arrives privately. It's already earning yield before you open the app.
-
----
-
-## Before vs After
-
-| | Western Union | remitYield |
-|---|---|---|
-| **Fees** | $5–$10 per $100 | **$0** (gasless via AVNU Paymaster) |
-| **Speed** | 1–3 business days | **~30 seconds** |
-| **Privacy** | Bank sees everything | **Amounts hidden** (Tongo confidential transfers) |
-| **Yield on idle money** | 0% | **~4.2% APY** (Vesu lending) |
-| **Login required** | Photo ID + forms + physical visit | **Email or Google** |
-| **Recipient needs** | Bank account or pickup location | **Just an email address** |
-
----
-
-## How It Works
-
-### Step 1: Someone Sends You Money 🌍
-
-A sender abroad connects their Ethereum wallet and sends USDC. The StarkZap **bridging module** moves funds from Ethereum → Starknet via CCTP (Circle's Cross-Chain Transfer Protocol).
-
-### Step 2: It Arrives Privately 🔒
-
-The transfer goes through **Tongo** — Starknet's confidential transfer protocol. The amount is hidden on-chain using zero-knowledge proofs. No one except the sender and recipient can see how much was sent. Block explorers show the transaction happened, but not the amount.
-
-### Step 3: It Starts Earning Instantly 📈
-
-Using the StarkZap **Tx Builder**, we batch three operations into **one atomic transaction**:
-
-1. **Rollover** pending confidential balance → active
-2. **Withdraw** from Tongo to the recipient's wallet
-3. **Deposit** into Vesu lending pool
-
-All three happen in a single gasless transaction. The recipient's money is earning yield before they even open the app.
-
-### Step 4: Withdraw Anytime 💸
-
-Recipients withdraw any amount, anytime. Funds move from the Vesu lending pool back to their wallet. **Zero gas fees** — the AVNU Paymaster sponsors every transaction.
-
----
-
-## StarkZap Integration (6 Modules)
-
-This project uses **6 StarkZap SDK modules** — each serving a clear purpose in the product flow. No bolted-on integrations.
-
-| Module | Purpose in remitYield | Integration Depth |
-|---|---|---|
-| **Wallet (Privy Signer)** | Email/social login → auto-creates Starknet wallet. No seed phrases, no browser extensions. | `PrivySigner` + `accountPresets.argentXV050` + server-side signing via Next.js API routes |
-| **Bridging (Ethereum CCTP)** | Sender bridges USDC from Ethereum → Starknet. Supports fast transfers via Circle CCTP. | `ConnectedEthereumWallet.from()` + `wallet.deposit()` with `fastTransfer: true` |
-| **Confidential (Tongo)** | Privacy-preserving transfers. Amounts hidden on-chain using ZK proofs. | `TongoConfidential` + `confidentialFund()` + `confidentialWithdraw()` + `rollover()` |
-| **Lending (Vesu)** | Auto-deposit received funds into yield pools. Recipients earn ~4.2% APY. | `wallet.lending().deposit()` + `wallet.lending().withdraw()` + `getMarkets()` |
-| **Paymaster (AVNU)** | Gas sponsorship for all users. Neither sender nor recipient pays any gas fees. | `feeMode: "sponsored"` on all transactions via AVNU Paymaster API |
-| **Tx Builder (Batching)** | Combines rollover + withdraw + deposit into one atomic transaction. | `wallet.tx().add(...rolloverCalls).confidentialWithdraw(...).lendDeposit(...).send()` |
-
-### The Batched Transaction (Key Technical Innovation)
-
-The most powerful integration is the **Tx Builder**. Instead of 3 separate transactions (each requiring gas, each with failure risk), we batch the entire receive → yield flow:
-
-```typescript
-// One atomic transaction: rollover + withdraw from Tongo + deposit to Vesu
-const tx = await wallet
-  .tx()
-  .add(...rolloverCalls)                    // Activate pending confidential balance
-  .confidentialWithdraw(confidential, {     // Move from private to public
-    amount: Amount.parse("100", USDC),
-    to: wallet.address,
-    sender: wallet.address,
-  })
-  .lendDeposit({                            // Auto-deposit into yield pool
-    token: USDC,
-    amount: Amount.parse("100", USDC),
-  })
-  .send({ feeMode: "sponsored" });          // Gasless via AVNU
-await tx.wait();
-```
-
-This means: if any step fails, none of them execute. The user's money is never in a half-state. All-or-nothing, gasless, in one block.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Frontend                             │
-│                    Next.js 14 (App Router)                  │
-│                                                             │
-│  ┌─────────┐   ┌───────────┐   ┌──────────┐               │
-│  │ Landing  │   │ Dashboard │   │ Withdraw │               │
-│  │  Page    │   │   Page    │   │   Page   │               │
-│  └─────────┘   └───────────┘   └──────────┘               │
-│                       │                                     │
-│              ┌────────┴─────────┐                          │
-│              │   Demo Mode      │  ← Toggle via env var    │
-│              │   (mock flows)   │                          │
-│              └────────┬─────────┘                          │
-│                       │                                     │
-│              ┌────────┴─────────┐                          │
-│              │  StarkZap SDK    │                          │
-│              │  (real calls)    │                          │
-│              └──────────────────┘                          │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-┌─────────────────────┴───────────────────────────────────────┐
-│                    Backend (API Routes)                      │
-│                                                             │
-│  POST /api/wallet/create  ← Creates Starknet wallet (Privy)│
-│  POST /api/wallet/sign    ← Signs tx hashes (Privy)        │
-│                                                             │
-│  Privy manages keys server-side                             │
-│  Private keys never touch the browser                       │
-└─────────────────────┬───────────────────────────────────────┘
-                      │
-┌─────────────────────┴───────────────────────────────────────┐
-│                    Starknet Sepolia                          │
-│                                                             │
-│  ┌──────┐  ┌───────┐  ┌──────┐  ┌──────┐  ┌────────────┐ │
-│  │Privy │  │ AVNU  │  │Tongo │  │ Vesu │  │ StarkZap   │ │
-│  │Wallet│  │Paymas.│  │(ZK)  │  │(Lend)│  │ Tx Builder │ │
-│  └──────┘  └───────┘  └──────┘  └──────┘  └────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Demo Mode
-
-remitYield includes a **Demo Mode** toggle (`NEXT_PUBLIC_DEMO_MODE=true`) that allows the full product experience without depending on testnet reliability.
-
-### What's real vs. simulated
-
-| Component | Demo Mode | Production Mode |
-|---|---|---|
-| **Privy wallet creation** | ✅ Real — actual Starknet address created | ✅ Real |
-| **Wallet persistence** | ✅ Real — sessionStorage across refreshes | ✅ Real |
-| **AVNU Paymaster config** | ✅ Real — SDK initialized with paymaster | ✅ Real |
-| **Receive animation** | Simulated (timed delays) | Real bridge + Tongo + Vesu |
-| **Yield ticker** | Calculated from mock timestamp | Calculated from real Vesu position |
-| **Withdraw** | In-memory balance update | Real Vesu `withdraw()` call |
-
-### Why Demo Mode exists
-
-Blockchain testnets are unreliable during live demos. Transactions can take minutes. RPC endpoints go down. Faucets run dry. Demo Mode ensures the product experience is always smooth for pitches and judging — while the real SDK calls are written, tested, and ready behind the toggle.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
+| Metric | Value |
 |---|---|
-| **Framework** | Next.js 14 (App Router, TypeScript) |
-| **Auth & Wallets** | Privy (`@privy-io/node` — server-side key management) |
-| **Blockchain SDK** | StarkZap (TypeScript SDK for Starknet) |
-| **Gas Sponsorship** | AVNU Paymaster |
-| **Privacy** | Tongo (confidential transfers via ZK proofs) |
-| **Yield** | Vesu (lending/supply protocol) |
-| **Bridging** | StarkZap Bridge Module (Ethereum CCTP) |
-| **Animations** | Framer Motion |
-| **Styling** | Tailwind CSS (dark theme) |
-| **Network** | Starknet Sepolia (testnet) |
-| **Deployment** | Vercel |
+| Chain | Kite Testnet (2368) |
+| Settlement oracle | Pyth Network |
+| Frequency | Every 4 hours, autonomous |
+| Subscription cost | ~1.6 cents/day in USDT |
+| Analysts live | 11 |
+| Attestations posted | 70+ at submission |
 
 ---
 
-## Project Structure
+## What's autonomous
 
-```
-remityield/
-├── app/
-│   ├── page.tsx                    # Landing page (hero + before/after + how it works)
-│   ├── layout.tsx                  # Root layout (dark theme enforced)
-│   ├── globals.css                 # Global styles
-│   ├── dashboard/
-│   │   ├── page.tsx                # Dashboard entry (SSR-disabled wrapper)
-│   │   └── layout.tsx              # Force-dynamic to prevent build prerender
-│   ├── withdraw/
-│   │   └── page.tsx                # Withdraw entry (SSR-disabled wrapper)
-│   └── api/
-│       └── wallet/
-│           ├── create/route.ts     # POST: create Starknet wallet via Privy
-│           └── sign/route.ts       # POST: sign transaction hash via Privy
-├── components/
-│   ├── DashboardClient.tsx         # Main dashboard UI (balance, ticker, tx history)
-│   ├── DashboardView.tsx           # Client-side wallet init wrapper
-│   ├── WithdrawClient.tsx          # Withdraw form + success state
-│   ├── WithdrawView.tsx            # Client-side wallet init wrapper
-│   ├── YieldTicker.tsx             # Live yield counter (ticks every second)
-│   ├── ReceiveAnimation.tsx        # 4-step receive → yield animation sequence
-│   └── ...
-├── lib/
-│   ├── sdk.ts                      # StarkZap SDK init + Privy wallet management
-│   ├── demo.ts                     # Demo mode engine (simulated flows)
-│   ├── store.ts                    # In-memory shared state (balance, tx history)
-│   ├── bridge.ts                   # Bridging helpers (demo + production stubs)
-│   ├── confidential.ts             # Tongo helpers (demo + production stubs)
-│   ├── lending.ts                  # Vesu helpers (demo + production stubs)
-│   ├── token.ts                    # Token balance helpers
-│   └── privy-server.ts             # Privy server client (API routes)
-├── next.config.ts                  # Webpack fallbacks for Node.js modules
-├── .env.local                      # Environment variables (not committed)
-└── package.json
-```
+The eleven analysts run without human input. The cron fires on schedule. Pyth settles independently. Attestations land on chain. The homepage reads chain state directly. Subscriptions are pure smart contract.
+
+The only operations a human ever performed were: deploying contracts, writing the code, and fixing a missing import path that killed the cron for three days mid build.
 
 ---
 
-## Run Locally
+## The hardest part
 
-### Prerequisites
+The autonomous cron died silently for three days during the build. The frontend kept showing cached state, so the UI was lying about being alive. The actual fix was one missing character in a TypeScript import path on the GitHub runner.
 
-- Node.js 18+
-- npm
-- A [Privy](https://privy.io) account (App ID + App Secret)
-- A [Starknet RPC](https://alchemy.com) endpoint (Sepolia)
-- An [AVNU Paymaster](https://portal.avnu.fi) API key
+That bug taught me the most important lesson of the project: if your agent's heartbeat isn't surfaced honestly, your product is theater.
 
-### Setup
+The homepage now reads the most recent attestation timestamp directly from chain and tells the user, in plain text, whether the system is LIVE (under 5 hours), RECOVERING (5 to 12 hours), or COLD (over 12 hours). Honesty became a product feature.
+
+---
+
+## Tech stack
+
+**Contracts** (Solidity, Hardhat)
+- `SibylAttestationsV2` is the outcome ledger. Each attestation stores realized bps, hold duration, win/loss/neutral classification, and a hash of the Pyth price update that settled it.
+- `SibylAnalysts` is an open registry. Anyone can register a new analyst with a name and strategy choice.
+- `SibylSubscriptionsV2` handles per day pricing with stackable durations. Subscribe for 7 days, then later for 30 more, and access stacks from current expiry.
+
+**Frontend** (Next.js 14, App Router)
+- wagmi v2 + ConnectKit for wallet flow
+- React Query for chain reads with proper invalidation on writes
+- Tailwind CSS, custom editorial design system
+- All chain reads use viem
+- The /me page is gated by `SibylSubscriptionsV2.isSubscribed`
+
+**Autonomous loop** (Node, tsx, ethers)
+- GitHub Actions schedule trigger every 4 hours
+- Manual nonce management (Kite RPC propagation lags ethers' built in cache, so we fetch from `'pending'` each write)
+- Per analyst try/catch so one failed tx doesn't kill the run
+- All eleven attestations land in roughly 40 to 120 seconds depending on RPC latency
+
+**Personality engine** (TypeScript)
+- Deterministic. `keccak256(analystAddress)` seeds confidence variance, threshold range, and reasoning template index.
+- Three strategies: Bear (fades pumps, structurally short), Chaser (rides momentum), Reverter (fades extremes).
+- Mirror implementation in both Node (for the cron) and browser (for the live UI). Same input, same output, both sides verify.
+
+---
+
+## Run it locally
 
 ```bash
-# Clone
-git clone https://github.com/unifyweb3/remityield.git
-cd remityield
+git clone https://github.com/unifyWeb3/sibyl
+cd sibyl
+pnpm install
 
-# Install
-npm install
-
-# Environment variables
+# 1. Set env
 cp .env.example .env.local
-# Fill in your keys (see below)
+# Fill in HACKATHON_PRIVATE_KEY with a wallet that has Kite Testnet USDT + KITE for gas.
+# Faucet: https://faucet.gokite.ai/
 
-# Run
-npm run dev
-# Open http://localhost:3000
+# 2. Run the frontend
+cd apps/web
+NEXT_FONT_GOOGLE_MOCK_FONTS=1 pnpm dev
+# Opens at http://localhost:3000
+
+# 3. Trigger the autonomous cron once locally
+cd ../..
+NODE_OPTIONS="--dns-result-order=ipv4first" pnpm tsx scripts/10_autonomous_attest.ts
+# This will post 11 attestations to Kite Testnet using the contracts already deployed.
 ```
 
-### Environment Variables
-
-```env
-# Privy (server-side — no NEXT_PUBLIC prefix)
-PRIVY_APP_ID=your_privy_app_id
-PRIVY_APP_SECRET=your_privy_app_secret
-
-# Starknet RPC
-NEXT_PUBLIC_STARKNET_RPC_URL=https://starknet-sepolia.g.alchemy.com/v2/YOUR_KEY
-
-# AVNU Paymaster
-NEXT_PUBLIC_PAYMASTER_URL=https://starknet.paymaster.avnu.fi
-NEXT_PUBLIC_PAYMASTER_API_KEY=your_avnu_key
-
-# App
-NEXT_PUBLIC_DEMO_MODE=true
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-### Build
-
-```bash
-# Production build (uses webpack for Node.js module compatibility)
-npx next build --webpack
-```
+For deploying your own analyst on the live registry, head to [usesibyl.vercel.app](https://usesibyl.vercel.app), scroll to the "Deploy your own analyst" section, give it a name, choose a strategy, sign one tx. Your analyst joins the next cron cycle.
 
 ---
 
-## User Flows
+## What's novel
 
-### Flow 1: Receive + Auto-Yield (Demo)
-
-```
-1. Open /dashboard
-2. Real Starknet wallet created via Privy (unique per session)
-3. Click "Simulate Receive $100"
-4. Animation plays: Bridging → Received → Deploying to Yield → Earning
-5. Yield ticker starts counting in real-time
-6. Transaction appears in Recent Activity
-```
-
-### Flow 2: Withdraw
-
-```
-1. Click "Withdraw Funds" from dashboard
-2. Enter amount (or tap MAX)
-3. Confirm withdrawal
-4. Success screen shows amount sent + remaining balance
-5. Transaction logged in history
-6. Navigate back to dashboard — balance updated
-```
-
-### Flow 3: Landing Page
-
-```
-1. Open / (root)
-2. Hero with animated particles + glow orbs
-3. Scroll to Before/After comparison (with live yield ticker in the "After" card)
-4. How It Works — 3 interactive step cards
-5. StarkZap modules grid
-6. CTA → Dashboard
-```
+1. **Permanent memory as a product feature.** Most AI trading products optimize for outcomes. Sibyl optimizes for memory. Every call permanently linked to the analyst that made it.
+2. **Deterministic personalities.** The cron runs on a GitHub server. The browser runs in a user's tab. Both run the same personality function on the same chain state and produce identical bias, confidence, and reasoning. No oracle for the analyst's "thinking" is needed because the thinking is itself reproducible.
+3. **Open registry.** Anyone can deploy an analyst. The marketplace scales horizontally without operator intervention. No whitelist. The chain decides who is good.
+4. **Honest liveness.** The homepage tells you when the autonomous loop is broken. This is not a feature most agent products ship, because most agent products would rather pretend they're always alive.
 
 ---
 
-## What We'd Build Next
+## Built for Kite AI Hackathon
 
-With more time (or grant funding), the roadmap includes:
+Track: **Agentic Trading & Portfolio Management**
 
-1. **Real Vesu integration on Sepolia** — swap demo mode for live `lending().deposit()` calls
-2. **Real Tongo confidential transfers** — ZK proof generation in-browser
-3. **Real Ethereum bridging** — CCTP fast transfers from Ethereum Sepolia
-4. **Persistent user accounts** — Privy frontend auth with user-linked wallets
-5. **Off-ramp integration** — Convert USDC to local fiat (M-Pesa, bank transfer)
-6. **Push notifications** — "You received $200 — it's already earning yield"
-7. **Mobile app** — React Native via `starkzap-native` package
+The track focus reads "reputation aware capital delegation, stablecoin first settlement." Sibyl is exactly that primitive. Eleven competing AI agents. Public on chain reputation. USDT payments on Kite. Subscribers delegate trust (and pennies) to reputations the chain has scored. No middleware. No off chain promises.
 
 ---
 
-## Key Design Decisions
+## Links
 
-### Why Privy over Cartridge?
-
-Privy supports email/social login for non-crypto users — our target audience. Cartridge is gaming-focused with passkey auth. For a remittance app where recipients may have zero crypto knowledge, "sign in with email" is the right UX.
-
-### Why server-side signing?
-
-Privy manages private keys on their infrastructure. The browser never touches a private key. This is the security model that fintech apps require — and it's why we use Next.js API routes for the `/api/wallet/sign` endpoint.
-
-### Why Demo Mode?
-
-Production blockchain apps are unreliable during live demos. Instead of risking a failed transaction during a pitch, we built Demo Mode as a first-class feature — same UI, same animations, same data flow — with simulated blockchain delays. The real SDK calls exist in the codebase, wrapped in `DEMO_MODE` checks.
-
-### Why batch transactions?
-
-Three separate transactions = three chances for failure, three gas costs, three confirmations. The StarkZap Tx Builder lets us batch rollover + withdraw + deposit into one atomic operation. If any step fails, all revert. The user never has funds stuck in a half-state.
-
----
-
-## Hackathon Judging Criteria Alignment
-
-| Criteria | How remitYield Delivers |
-|---|---|
-| **Real usefulness** | Cross-border remittances are a $700B+ market with real pain points (fees, delays, no yield) |
-| **Clear StarkZap integration** | 6 modules used — wallet, bridging, confidential, lending, paymaster, tx builder |
-| **Integration depth** | Not surface-level: batched atomic transactions, server-side signing, production architecture |
-| **Innovation** | First app combining private remittances with auto-yield in one gasless flow |
-| **Before/After transformation** | Landing page shows side-by-side comparison with live yield ticker |
-| **Production-ready** | Deployed on Vercel, real wallet creation, session persistence, error handling |
-| **Open source** | Full codebase on GitHub with documented architecture |
-
----
-
-## Credits
-
-Built by **[Ernest / @unifyWeb3](https://x.com/unifyWeb3)** — Web3 content creator and builder based in West Africa.
-
-### Protocols & Tools
-
-- [StarkZap SDK](https://docs.starknet.io/build/starkzap/overview) — Unified TypeScript SDK for Starknet
-- [Starknet](https://starknet.io) — L2 blockchain with native account abstraction
-- [Privy](https://privy.io) — Wallet infrastructure and auth
-- [AVNU](https://avnu.fi) — DEX aggregator and paymaster
-- [Vesu](https://vesu.xyz) — Lending and borrowing protocol
-- [Tongo](https://tongo.cash) — Confidential transfers via ZK proofs
-- [Framer Motion](https://motion.dev) — Animation library
+- **Live demo:** [usesibyl.vercel.app](https://usesibyl.vercel.app)
+- **GitHub:** [github.com/unifyWeb3/sibyl](https://github.com/unifyWeb3/sibyl)
+- **Contracts on KiteScan:** [testnet.kitescan.ai](https://testnet.kitescan.ai/)
+- **Pyth Network:** [pyth.network](https://pyth.network/)
+- **Kite AI:** [gokite.ai](https://gokite.ai/)
 
 ---
 
 ## License
 
-MIT — fork it, build on it, make remittances better.
+MIT.
+
+Anyone can fork this, deploy their own version, build on top of the attestation primitive. The trust layer should be open.
