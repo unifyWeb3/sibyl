@@ -12,16 +12,16 @@ import {
   formatRelativeTime,
   loadLeaderboard,
   type Outcome,
-} from '@/lib/kite';
-import { MissionControl } from '@/components/MissionControl';
-import { Leaderboard } from '@/components/Leaderboard';
-import { DeployAnalyst } from '@/components/DeployAnalyst';
-import { Thesis } from '@/components/Thesis';
-import { ConnectButton } from '@/components/ConnectButton';
-import { ExportCardButton } from '@/components/ExportCardButton';
-import { LiveStatusBanner } from '@/components/LiveStatusBanner';
+} from "@/lib/kite";
+import { MissionControl } from "@/components/MissionControl";
+import { Leaderboard } from "@/components/Leaderboard";
+import { DeployAnalyst } from "@/components/DeployAnalyst";
+import { Thesis } from "@/components/Thesis";
+import { ConnectButton } from "@/components/ConnectButton";
+import { ExportCardButton } from "@/components/ExportCardButton";
+import { LiveStatusBanner } from "@/components/LiveStatusBanner";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 10;
 
 interface AttestationRow {
@@ -44,14 +44,17 @@ interface AnalystState {
   attestations: AttestationRow[];
 }
 
-async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | null> {
+async function loadAnalystState(
+  analyst: `0x${string}`,
+): Promise<AnalystState | null> {
   try {
-    const [total, wins, losses, neutrals, cumulativeBps] = (await publicClient.readContract({
-      address: SIBYL_CONTRACTS.attestations,
-      abi: SIBYL_ATTESTATIONS_ABI,
-      functionName: 'analystSummary',
-      args: [analyst],
-    })) as [bigint, bigint, bigint, bigint, bigint];
+    const [total, wins, losses, neutrals, cumulativeBps] =
+      (await publicClient.readContract({
+        address: SIBYL_CONTRACTS.attestations,
+        abi: SIBYL_ATTESTATIONS_ABI,
+        functionName: "analystSummary",
+        args: [analyst],
+      })) as [bigint, bigint, bigint, bigint, bigint];
 
     const totalN = Number(total);
 
@@ -64,7 +67,7 @@ async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | 
         const id = (await publicClient.readContract({
           address: SIBYL_CONTRACTS.attestations,
           abi: SIBYL_ATTESTATIONS_ABI,
-          functionName: 'attestationsByAnalyst',
+          functionName: "attestationsByAnalyst",
           args: [analyst, BigInt(i)],
         })) as `0x${string}`;
         ids.push(id);
@@ -78,7 +81,7 @@ async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | 
       const a = (await publicClient.readContract({
         address: SIBYL_CONTRACTS.attestations,
         abi: SIBYL_ATTESTATIONS_ABI,
-        functionName: 'getAttestation',
+        functionName: "getAttestation",
         args: [id],
       })) as any;
       attestations.push({
@@ -105,7 +108,7 @@ async function loadAnalystState(analyst: `0x${string}`): Promise<AnalystState | 
       attestations: attestations.reverse(),
     };
   } catch (err) {
-    console.error('Failed to load analyst state:', err);
+    console.error("Failed to load analyst state:", err);
     return null;
   }
 }
@@ -116,14 +119,14 @@ async function loadUsdtBalance(addr: `0x${string}`): Promise<number> {
       address: USDT_ADDRESS,
       abi: [
         {
-          type: 'function',
-          name: 'balanceOf',
-          stateMutability: 'view',
-          inputs: [{ type: 'address' }],
-          outputs: [{ type: 'uint256' }],
+          type: "function",
+          name: "balanceOf",
+          stateMutability: "view",
+          inputs: [{ type: "address" }],
+          outputs: [{ type: "uint256" }],
         },
       ],
-      functionName: 'balanceOf',
+      functionName: "balanceOf",
       args: [addr],
     })) as bigint;
     return Number(raw) / 1e18;
@@ -133,15 +136,17 @@ async function loadUsdtBalance(addr: `0x${string}`): Promise<number> {
 }
 
 function OutcomeDot({ outcome }: { outcome: Outcome }) {
-  if (outcome === 'Win') {
+  if (outcome === "Win") {
     return (
       <span className="inline-block w-2.5 h-2.5 rounded-full bg-signal shadow-[0_0_8px_rgba(0,208,132,0.7)]" />
     );
   }
-  if (outcome === 'Loss') {
+  if (outcome === "Loss") {
     return <span className="inline-block w-2.5 h-2.5 rounded-full bg-warn" />;
   }
-  return <span className="inline-block w-2.5 h-2.5 rounded-full bg-ink-tertiary" />;
+  return (
+    <span className="inline-block w-2.5 h-2.5 rounded-full bg-ink-tertiary" />
+  );
 }
 
 export default async function HomePage() {
@@ -160,12 +165,12 @@ export default async function HomePage() {
 
         <header
           className="relative z-10 max-w-[1400px] w-full mx-auto px-6 md:px-12 pt-8 md:pt-10 flex items-center justify-between label-caps anim-stagger"
-          style={{ animationDelay: '0ms' }}
+          style={{ animationDelay: "0ms" }}
         >
           <span>Sibyl · Proof of Alpha</span>
           <div className="flex items-center gap-3 md:gap-5">
             <span className="hidden md:inline">
-              {leaderboard.length} analyst{leaderboard.length === 1 ? '' : 's'}
+              {leaderboard.length} analyst{leaderboard.length === 1 ? "" : "s"}
             </span>
             <a
               href="/me"
@@ -182,14 +187,17 @@ export default async function HomePage() {
 
         <div className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-6 md:px-12 py-10 md:py-16 grid md:grid-cols-[1.1fr_1fr] gap-12 md:gap-16 items-center">
           <div>
-            <h1 className="font-display text-hero anim-stagger" style={{ animationDelay: '80ms' }}>
+            <h1
+              className="font-display text-hero anim-stagger"
+              style={{ animationDelay: "80ms" }}
+            >
               Sibyl
               <span className="text-signal animate-blink">_</span>
             </h1>
 
             <p
               className="mt-6 md:mt-8 font-display italic text-3xl md:text-5xl text-ink-secondary leading-[1.1] anim-stagger"
-              style={{ animationDelay: '180ms' }}
+              style={{ animationDelay: "180ms" }}
             >
               Proof of Alpha,
               <br />
@@ -198,30 +206,41 @@ export default async function HomePage() {
 
             <p
               className="mt-8 md:mt-10 max-w-xl text-base md:text-lg text-ink-secondary leading-relaxed anim-stagger"
-              style={{ animationDelay: '280ms' }}
+              style={{ animationDelay: "280ms" }}
             >
-              Subscribe to autonomous AI analysts. See their bias and reasoning before BTC moves. Every call settles on Kite.{' '}
-              <span className="text-ink">Trading reputations that can't be erased.</span>
+              Subscribe to autonomous AI analysts. See their bias and reasoning
+              before BTC moves. Every call settles on Kite.{" "}
+              <span className="text-ink">
+                Trading reputations that can't be erased.
+              </span>
             </p>
 
             <div
               className="mt-10 md:mt-12 flex flex-wrap items-center gap-6 text-sm anim-stagger"
-              style={{ animationDelay: '380ms' }}
+              style={{ animationDelay: "380ms" }}
             >
               <a
                 href="#leaderboard"
                 className="group inline-flex items-center gap-2 border border-rule hover:border-ink bg-paper-elevated px-5 py-2.5 rounded-sm shadow-card hover:shadow-card-hover transition-all"
               >
                 See the leaderboard
-                <span className="text-signal group-hover:translate-x-0.5 transition-transform">→</span>
+                <span className="text-signal group-hover:translate-x-0.5 transition-transform">
+                  →
+                </span>
               </a>
-              <a href="#deploy" className="text-ink-secondary hover:text-ink transition-colors">
+              <a
+                href="#deploy"
+                className="text-ink-secondary hover:text-ink transition-colors"
+              >
                 Mint your analyst →
               </a>
             </div>
           </div>
 
-          <div className="text-ink anim-stagger" style={{ animationDelay: '480ms' }}>
+          <div
+            className="text-ink anim-stagger"
+            style={{ animationDelay: "480ms" }}
+          >
             <MissionControl
               totalAttestations={analystState?.total ?? 0}
               hitRate={analystState?.hitRate ?? 0}
@@ -232,7 +251,7 @@ export default async function HomePage() {
 
         <footer
           className="relative z-10 max-w-[1400px] w-full mx-auto px-6 md:px-12 pb-8 md:pb-10 flex items-center justify-between label-caps anim-stagger"
-          style={{ animationDelay: '580ms' }}
+          style={{ animationDelay: "580ms" }}
         >
           <span>v0.1 · Apr 2026</span>
           <span className="flex items-center gap-2.5">
@@ -247,7 +266,10 @@ export default async function HomePage() {
 
       {/* ─── Leader's reputation cards ─── */}
       {analystState && leader && (
-        <section id="reputation" className="border-t border-rule-subtle bg-paper-subtle">
+        <section
+          id="reputation"
+          className="border-t border-rule-subtle bg-paper-subtle"
+        >
           <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
             <div className="flex items-baseline justify-between mb-14">
               <h2 className="font-display text-h2">
@@ -256,7 +278,7 @@ export default async function HomePage() {
                 is on-chain.
               </h2>
               <span className="label-caps">
-                #{String(leader.rank).padStart(3, '0')} · {leader.name}
+                #{String(leader.rank).padStart(3, "0")} · {leader.name}
               </span>
             </div>
 
@@ -268,7 +290,8 @@ export default async function HomePage() {
                   <span className="text-ink-tertiary">%</span>
                 </div>
                 <div className="mt-4 text-sm text-ink-muted tabular font-mono">
-                  {analystState.wins}W · {analystState.losses}L · {analystState.neutrals}N
+                  {analystState.wins}W · {analystState.losses}L ·{" "}
+                  {analystState.neutrals}N
                 </div>
               </div>
 
@@ -277,13 +300,13 @@ export default async function HomePage() {
                 <div
                   className={`font-display text-display tabular ${
                     analystState.cumulativeBps > 0
-                      ? 'text-signal-deep'
+                      ? "text-signal-deep"
                       : analystState.cumulativeBps < 0
-                        ? 'text-warn-deep'
-                        : 'text-ink'
+                        ? "text-warn-deep"
+                        : "text-ink"
                   }`}
                 >
-                  {analystState.cumulativeBps > 0 ? '+' : ''}
+                  {analystState.cumulativeBps > 0 ? "+" : ""}
                   {analystState.cumulativeBps}
                   <span className="text-ink-tertiary text-2xl md:text-3xl ml-2 font-sans not-italic">
                     bps
@@ -304,11 +327,11 @@ export default async function HomePage() {
                       <div
                         key={a.id}
                         className={`w-3 h-3 rounded-full ${
-                          a.outcome === 'Win'
-                            ? 'bg-signal shadow-[0_0_10px_rgba(0,208,132,0.6)]'
-                            : a.outcome === 'Loss'
-                              ? 'bg-warn'
-                              : 'bg-ink-tertiary'
+                          a.outcome === "Win"
+                            ? "bg-signal shadow-[0_0_10px_rgba(0,208,132,0.6)]"
+                            : a.outcome === "Loss"
+                              ? "bg-warn"
+                              : "bg-ink-tertiary"
                         }`}
                         title={`${a.outcome} ${formatBps(a.realizedBps)}`}
                       />
@@ -325,9 +348,16 @@ export default async function HomePage() {
               <div>
                 <div className="label-caps mb-2">share this reputation</div>
                 <p className="text-sm text-ink-muted max-w-md leading-relaxed">
-                  Every analyst's record is exportable as a verifiable card. Pulled live from the chain.
-                  Subscribe to any analyst to download their card from{' '}
-                  <a href="/me" className="underline hover:text-ink transition-colors">My Signals</a>.
+                  Every analyst's record is exportable as a verifiable card.
+                  Pulled live from the chain. Subscribe to any analyst to
+                  download their card from{" "}
+                  <a
+                    href="/me"
+                    className="underline hover:text-ink transition-colors"
+                  >
+                    My Signals
+                  </a>
+                  .
                 </p>
               </div>
               <div className="flex flex-col items-start md:items-end gap-2">
@@ -337,7 +367,9 @@ export default async function HomePage() {
                   variant="block"
                   label={`Preview: ${leader.name}'s Card`}
                 />
-                <span className="label-caps !text-ink-tertiary">leaderboard leader · preview</span>
+                <span className="label-caps !text-ink-tertiary">
+                  leaderboard leader · preview
+                </span>
               </div>
             </div>
           </div>
@@ -350,9 +382,13 @@ export default async function HomePage() {
           <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28 relative z-10">
             <div className="flex items-end justify-between mb-3 border-b border-ink pb-3">
               <div className="flex items-center gap-3">
-                <span className="label-caps !text-ink !font-semibold">the ledger</span>
+                <span className="label-caps !text-ink !font-semibold">
+                  the ledger
+                </span>
                 <span className="ticker-dots flex items-center">
-                  <span></span><span></span><span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </span>
                 <span className="label-caps !text-signal-deep">live feed</span>
               </div>
@@ -375,7 +411,7 @@ export default async function HomePage() {
               <div className="hidden md:block text-right">
                 <div className="label-caps mb-1">attestations</div>
                 <div className="font-mono text-2xl tabular text-ink">
-                  {String(analystState.total).padStart(3, '0')}
+                  {String(analystState.total).padStart(3, "0")}
                 </div>
               </div>
             </div>
@@ -398,7 +434,11 @@ export default async function HomePage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`block md:grid md:grid-cols-12 gap-3 px-5 py-4 transition-colors group border-b border-manila-border last:border-b-0 ${
-                    i === 0 ? 'ledger-row-new' : i % 2 === 0 ? 'ledger-row-even' : 'ledger-row-odd'
+                    i === 0
+                      ? "ledger-row-new"
+                      : i % 2 === 0
+                        ? "ledger-row-even"
+                        : "ledger-row-odd"
                   } hover:bg-manila-raised`}
                 >
                   {/* MOBILE: stacked card layout */}
@@ -406,18 +446,23 @@ export default async function HomePage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <OutcomeDot outcome={a.outcome} />
-                        <span className="font-sans text-ink text-base font-medium">{a.outcome}</span>
+                        <span className="font-sans text-ink text-base font-medium">
+                          {a.outcome}
+                        </span>
                         <span className="font-mono text-xs text-ink-muted">
-                          #{String(analystState.attestations.length - i).padStart(3, '0')}
+                          #
+                          {String(
+                            analystState.attestations.length - i,
+                          ).padStart(3, "0")}
                         </span>
                       </div>
                       <span
                         className={`font-mono tabular text-base font-medium ${
                           a.realizedBps > 0
-                            ? 'text-signal-deep'
+                            ? "text-signal-deep"
                             : a.realizedBps < 0
-                              ? 'text-warn-deep'
-                              : 'text-ink'
+                              ? "text-warn-deep"
+                              : "text-ink"
                         }`}
                       >
                         {formatBps(a.realizedBps)}
@@ -425,7 +470,8 @@ export default async function HomePage() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-ink-muted">
                       <span className="font-mono">
-                        {a.holdSeconds / 3600}h hold · {truncateAddress(a.id, 6)}
+                        {a.holdSeconds / 3600}h hold ·{" "}
+                        {truncateAddress(a.id, 6)}
                       </span>
                       <span className="font-mono group-hover:text-signal-deep transition-colors">
                         {formatRelativeTime(a.timestamp)} ↗
@@ -436,19 +482,24 @@ export default async function HomePage() {
                   {/* DESKTOP: 12-col table */}
                   <div className="hidden md:contents items-center">
                     <div className="col-span-1 font-mono text-xs text-ink-muted tabular self-center">
-                      {String(analystState.attestations.length - i).padStart(3, '0')}
+                      {String(analystState.attestations.length - i).padStart(
+                        3,
+                        "0",
+                      )}
                     </div>
                     <div className="col-span-2 flex items-center gap-3">
                       <OutcomeDot outcome={a.outcome} />
-                      <span className="font-sans text-ink text-[0.95rem]">{a.outcome}</span>
+                      <span className="font-sans text-ink text-[0.95rem]">
+                        {a.outcome}
+                      </span>
                     </div>
                     <div
                       className={`col-span-2 font-mono tabular text-[0.95rem] self-center ${
                         a.realizedBps > 0
-                          ? 'text-signal-deep'
+                          ? "text-signal-deep"
                           : a.realizedBps < 0
-                            ? 'text-warn-deep'
-                            : 'text-ink'
+                            ? "text-warn-deep"
+                            : "text-ink"
                       }`}
                     >
                       {formatBps(a.realizedBps)}
@@ -479,14 +530,18 @@ export default async function HomePage() {
       )}
 
       {/* ─── LEADERBOARD ─── */}
-      <section id="leaderboard" className="border-t border-rule-subtle bg-paper">
+      <section
+        id="leaderboard"
+        className="border-t border-rule-subtle bg-paper"
+      >
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
           <div className="flex items-baseline justify-between mb-12">
             <div>
               <div className="label-caps mb-3">the marketplace</div>
               <h2 className="font-display text-h2">Analysts on Sibyl.</h2>
               <p className="mt-4 max-w-xl text-base text-ink-secondary leading-relaxed">
-                Anyone can deploy an analyst. The chain decides if they're any good.{' '}
+                Anyone can deploy an analyst. The chain decides if they're any
+                good.{" "}
                 <span className="text-ink">Reputation is permissionless.</span>
               </p>
             </div>
@@ -505,7 +560,10 @@ export default async function HomePage() {
       </section>
 
       {/* ─── DEPLOY YOUR OWN ANALYST ─── */}
-      <section id="deploy" className="border-t border-rule-subtle bg-paper-subtle">
+      <section
+        id="deploy"
+        className="border-t border-rule-subtle bg-paper-subtle"
+      >
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
           <DeployAnalyst />
         </div>
@@ -516,7 +574,9 @@ export default async function HomePage() {
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-20 md:py-28">
           <div className="flex items-baseline justify-between mb-12">
             <h2 className="font-display text-h2">
-              The infrastructure<br />beneath the marketplace.
+              The infrastructure
+              <br />
+              beneath the marketplace.
             </h2>
             <span className="label-caps">Primitives</span>
           </div>
@@ -559,7 +619,9 @@ export default async function HomePage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="label-caps">USDT</span>
-                    <span className="font-mono tabular text-ink">{traderUsdt.toFixed(4)}</span>
+                    <span className="font-mono tabular text-ink">
+                      {traderUsdt.toFixed(4)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -569,7 +631,9 @@ export default async function HomePage() {
                   <div className="font-display italic text-2xl text-ink">
                     {SIBYL_AGENTS.guardian.tagline}
                   </div>
-                  <span className="label-caps">{SIBYL_AGENTS.guardian.name}</span>
+                  <span className="label-caps">
+                    {SIBYL_AGENTS.guardian.name}
+                  </span>
                 </div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
                   {SIBYL_AGENTS.guardian.role}
@@ -599,7 +663,9 @@ export default async function HomePage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="label-caps">USDT</span>
-                    <span className="font-mono tabular text-ink">{guardianUsdt.toFixed(4)}</span>
+                    <span className="font-mono tabular text-ink">
+                      {guardianUsdt.toFixed(4)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -611,9 +677,12 @@ export default async function HomePage() {
             <div className="grid md:grid-cols-3 gap-5">
               <div className="card-paper p-7 rounded-sm">
                 <div className="label-caps mb-3">attestations</div>
-                <div className="font-display italic text-xl mb-3 text-ink">SibylAttestations</div>
+                <div className="font-display italic text-xl mb-3 text-ink">
+                  SibylAttestations
+                </div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
-                  Every outcome, permanently linked to the analyst that called it.
+                  Every outcome, permanently linked to the analyst that called
+                  it.
                 </div>
                 <a
                   href={`${EXPLORER}/address/${SIBYL_CONTRACTS.attestations}`}
@@ -627,7 +696,9 @@ export default async function HomePage() {
 
               <div className="card-paper p-7 rounded-sm">
                 <div className="label-caps mb-3">analyst registry</div>
-                <div className="font-display italic text-xl mb-3 text-ink">SibylAnalysts</div>
+                <div className="font-display italic text-xl mb-3 text-ink">
+                  SibylAnalysts
+                </div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
                   Open registry. Anyone can deploy and compete.
                 </div>
@@ -644,7 +715,8 @@ export default async function HomePage() {
               <div className="card-paper p-7 rounded-sm">
                 <div className="label-caps mb-3">first x402 payment</div>
                 <div className="font-display italic text-xl mb-3 text-ink">
-                  Trader <span className="text-signal-deep not-italic">→</span> Analyst
+                  Trader <span className="text-signal-deep not-italic">→</span>{" "}
+                  Analyst
                 </div>
                 <div className="text-sm text-ink-muted mb-5 leading-relaxed">
                   0.005 USDT settled in 8.6s on Kite L1.
@@ -665,15 +737,17 @@ export default async function HomePage() {
 
       <footer className="border-t border-rule-subtle bg-paper">
         <div className="max-w-[1400px] mx-auto px-6 md:px-12 py-10 flex flex-col md:flex-row items-baseline justify-between gap-4">
-          <div className="label-caps">Built for the Kite AI Hackathon · Apr 2026</div>
+          <div className="label-caps">
+            Built for the Kite AI Hackathon · Apr 2026
+          </div>
           <div className="flex gap-6 label-caps">
             <a
-              href="https://twitter.com/unifyWeb3"
+              href="https://twitter.com/oxunify"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-ink transition-colors"
             >
-              @unifyWeb3 ↗
+              @oxunify ↗
             </a>
             <a
               href="https://github.com/unifyWeb3/sibyl"
